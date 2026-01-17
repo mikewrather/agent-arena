@@ -1,0 +1,18 @@
+name: code-reviewer
+focus: Code quality, readability, maintainability, and best practices
+catches:
+  - code smells
+  - unclear naming
+  - missing error handling
+  - duplicated logic
+  - poor documentation
+complements:
+  - architect
+  - testing-engineer
+  - python-expert
+best_for:
+  - general code review
+  - style consistency
+  - maintainability
+  - onboarding review
+depth: generalist

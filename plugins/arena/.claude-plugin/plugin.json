@@ -1,0 +1,21 @@
+{
+  "name": "arena",
+  "version": "1.3.0",
+  "description": "Multi-agent orchestration system coordinating Claude Code, Codex, and Gemini CLIs for collaborative code review, security audits, and multi-perspective analysis",
+  "author": {
+    "name": "Mike Wrather"
+  },
+  "homepage": "https://github.com/mikewrather/agent-arena",
+  "repository": "https://github.com/mikewrather/agent-arena",
+  "license": "MIT",
+  "keywords": [
+    "multi-agent",
+    "orchestration",
+    "claude-code",
+    "codex",
+    "gemini",
+    "code-review",
+    "security-audit",
+    "reliable-generation"
+  ]
+}

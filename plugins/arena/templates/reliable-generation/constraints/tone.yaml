@@ -1,0 +1,38 @@
+# Tone Constraint
+# This constraint ensures appropriate tone and style
+
+id: tone
+priority: 10
+
+summary: |
+  Content must maintain consistent, appropriate tone throughout.
+  Style should match the intended purpose and audience.
+  Voice should be engaging without being inappropriate.
+
+rules:
+  - id: consistent-voice
+    text: |
+      Maintain a consistent voice and perspective throughout.
+      Avoid jarring shifts in tone or style.
+    default_severity: MEDIUM
+    examples:
+      violation: "Formal academic writing suddenly becomes casual slang"
+      compliant: "Consistent professional tone throughout"
+
+  - id: audience-appropriate
+    text: |
+      Tone should match the target audience's expectations.
+      Technical content for experts, accessible content for general audiences.
+    default_severity: HIGH
+    examples:
+      violation: "Overly technical jargon in consumer documentation"
+      compliant: "Clear explanations with appropriate vocabulary"
+
+  - id: engaging
+    text: |
+      Content should be engaging and hold reader interest.
+      Avoid dry, monotonous writing.
+    default_severity: LOW
+    examples:
+      violation: "Bullet-point list of facts without narrative"
+      compliant: "Compelling narrative that draws reader in"

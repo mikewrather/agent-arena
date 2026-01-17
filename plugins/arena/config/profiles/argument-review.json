@@ -1,0 +1,14 @@
+{
+  "description": "Adversarial review of presentations, essays, and arguments with research-backed fact checking",
+  "mode": "adversarial",
+  "pattern": "parallel",
+  "turns": 4,
+  "stop_on_consensus": true,
+  "enable_research": true,
+  "research_agent": "gemini",
+  "personas": {
+    "claude": "devil-advocate",
+    "codex": "logic-analyst",
+    "gemini": "fact-checker"
+  }
+}

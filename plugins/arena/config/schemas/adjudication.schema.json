@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "https://triad.dev/schemas/adjudication.schema.json",
+  "title": "Adjudication",
+  "description": "Structured adjudication output from the adjudicator agent in the reliable generation pipeline",
+  "type": "object",
+  "required": ["iteration", "status", "decisions", "bill_of_work"],
+  "properties": {
+    "iteration": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Current iteration number"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["REWRITE", "APPROVED", "ERROR"],
+      "description": "Verdict - APPROVED if all constraints satisfied, REWRITE if fixes needed"
+    },
+    "tension_analysis": {
+      "type": "array",
+      "description": "Analysis of tensions between competing constraints",
+      "items": {
+        "type": "object",
+        "properties": {
+          "axis": {
+            "type": "string",
+            "description": "The competing constraints (e.g., 'engagement vs safety')"
+          },
+          "current_position": {
+            "type": "string",
+            "description": "Where the artifact currently sits on this axis"
+          },
+          "target": {
+            "type": "string",
+            "description": "Where the artifact should be"
+          },
+          "guidance": {
+            "type": "string",
+            "description": "How to move toward the target"
+          }
+        }
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "description": "Decisions made for each issue",
+      "items": {
+        "type": "object",
+        "required": ["issue_id", "constraint", "severity", "status", "flagged_by"],
+        "properties": {
+          "issue_id": {
+            "type": "string",
+            "description": "ID of the issue being decided"
+          },
+          "constraint": {
+            "type": "string",
+            "description": "Constraint this issue relates to"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+            "description": "Severity of the issue"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pursuing", "dismissed"],
+            "description": "Whether to pursue fixing this issue"
+          },
+          "flagged_by": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of agents that flagged this issue"
+          },
+          "competing_constraint": {
+            "type": ["string", "null"],
+            "description": "If this issue conflicts with another constraint"
+          },
+          "adjudication": {
+            "type": "string",
+            "description": "Reasoning when issues are in tension"
+          },
+          "rationale": {
+            "type": "string",
+            "description": "Reason for dismissing (if dismissed)"
+          },
+          "guidance": {
+            "type": "string",
+            "description": "Specific instructions for fixing"
+          }
+        }
+      }
+    },
+    "termination": {
+      "type": "object",
+      "description": "Counts of issues still being pursued",
+      "properties": {
+        "critical_pursuing": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of CRITICAL issues still pursuing"
+        },
+        "high_pursuing": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of HIGH issues still pursuing"
+        }
+      }
+    },
+    "bill_of_work": {
+      "type": "string",
+      "description": "Prioritized list of fixes for the generator, in markdown format"
+    }
+  },
+  "examples": [
+    {
+      "iteration": 1,
+      "status": "REWRITE",
+      "tension_analysis": [
+        {
+          "axis": "engagement vs safety",
+          "current_position": "too safe, lacks tension",
+          "target": "add edge without nightmare content",
+          "guidance": "Increase stakes in scene 3, but resolve fear before scene end"
+        }
+      ],
+      "decisions": [
+        {
+          "issue_id": "safety-001",
+          "constraint": "safety",
+          "severity": "CRITICAL",
+          "status": "pursuing",
+          "flagged_by": ["claude", "codex"],
+          "competing_constraint": null,
+          "guidance": "Add resolution before scene ends"
+        },
+        {
+          "issue_id": "engagement-002",
+          "constraint": "engagement",
+          "severity": "HIGH",
+          "status": "pursuing",
+          "flagged_by": ["gemini"],
+          "competing_constraint": "safety",
+          "adjudication": "Valid concern. Increase stakes without extending fear duration.",
+          "guidance": "Add obstacle in scene 3, resolve within same scene"
+        },
+        {
+          "issue_id": "tone-003",
+          "constraint": "tone",
+          "severity": "LOW",
+          "status": "dismissed",
+          "flagged_by": ["gemini"],
+          "rationale": "Stylistic preference within acceptable range"
+        }
+      ],
+      "termination": {
+        "critical_pursuing": 1,
+        "high_pursuing": 1
+      },
+      "bill_of_work": "## MUST FIX (CRITICAL)\n1. safety-001: Add fear resolution before scene end\n\n## SHOULD FIX (HIGH)\n2. engagement-002: Add obstacle in scene 3, resolve within scene\n   (Balances engagement constraint against safety)\n\n## Dismissed\n- tone-003: Stylistic preference"
+    }
+  ]
+}

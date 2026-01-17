@@ -1,0 +1,18 @@
+name: performance-engineer
+focus: Performance optimization, profiling, caching strategies, and resource efficiency
+catches:
+  - O(n^2) algorithms
+  - memory leaks
+  - missing caching
+  - unnecessary computation
+  - database N+1 queries
+complements:
+  - architect
+  - backend-engineer
+  - data-engineer
+best_for:
+  - performance review
+  - optimization
+  - profiling analysis
+  - scaling preparation
+depth: specialist

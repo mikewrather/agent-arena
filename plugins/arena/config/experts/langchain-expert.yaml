@@ -1,0 +1,20 @@
+name: langchain-expert
+focus: LangChain/LangGraph implementation, single-agent patterns, chains, RAG, and prompt engineering
+catches:
+  - poor prompt templates
+  - inefficient chain composition
+  - RAG retrieval issues
+  - memory buffer overflow
+  - incorrect output parsers
+  - missing prompt injection guards
+complements:
+  - python-expert
+  - agent-architect
+  - ml-engineer
+best_for:
+  - LangChain code review
+  - RAG implementation
+  - prompt template design
+  - single-agent workflows
+  - chain debugging
+depth: specialist

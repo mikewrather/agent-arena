@@ -1,0 +1,21 @@
+{
+  "state_dir": ".arena",
+  "mode": "collaborative",
+  "default_pattern": "sequential",
+  "order": ["claude", "codex", "gemini"],
+  "agents": {
+    "claude": {
+      "kind": "claude",
+      "cmd": ["claude", "-p"]
+    },
+    "codex": {
+      "kind": "codex",
+      "cmd": ["codex", "exec", "--skip-git-repo-check", "--sandbox", "read-only", "-o", "-", "-"],
+      "suppress_stderr": true
+    },
+    "gemini": {
+      "kind": "gemini",
+      "cmd": ["gemini"]
+    }
+  }
+}

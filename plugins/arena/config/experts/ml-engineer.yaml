@@ -1,0 +1,18 @@
+name: ml-engineer
+focus: Machine learning systems, model integration, ML pipelines, and AI infrastructure
+catches:
+  - model serving issues
+  - feature engineering problems
+  - training/serving skew
+  - model monitoring gaps
+  - ML technical debt
+complements:
+  - data-engineer
+  - python-expert
+  - performance-engineer
+best_for:
+  - ML system review
+  - model integration
+  - AI infrastructure
+  - feature pipelines
+depth: specialist

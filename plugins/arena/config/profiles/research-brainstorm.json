@@ -1,0 +1,14 @@
+{
+  "description": "Sequential brainstorm with research capabilities. Agents can request web research mid-conversation.",
+  "mode": "collaborative",
+  "pattern": "sequential",
+  "turns": 12,
+  "stop_on_stagnation": true,
+  "enable_research": true,
+  "research_agent": "gemini",
+  "personas": {
+    "claude": "architect",
+    "codex": "code-reviewer",
+    "gemini": "performance-engineer"
+  }
+}

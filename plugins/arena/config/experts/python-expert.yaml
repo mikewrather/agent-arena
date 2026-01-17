@@ -1,0 +1,18 @@
+name: python-expert
+focus: Pythonic patterns, stdlib usage, type hints, async patterns, and Python ecosystem
+catches:
+  - non-pythonic code
+  - missing type hints
+  - async anti-patterns
+  - inefficient stdlib usage
+  - dependency issues
+complements:
+  - testing-engineer
+  - performance-engineer
+  - langchain-expert
+best_for:
+  - python code review
+  - async implementation
+  - type system design
+  - dependency management
+depth: specialist

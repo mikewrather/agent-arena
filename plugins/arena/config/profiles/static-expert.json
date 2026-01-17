@@ -1,0 +1,12 @@
+{
+  "description": "Static expert panel: architect, security, performance (no routing)",
+  "mode": "collaborative",
+  "pattern": "sequential",
+  "turns": 6,
+  "stop_on_consensus": true,
+  "personas": {
+    "claude": "architect",
+    "codex": "security-auditor",
+    "gemini": "performance-engineer"
+  }
+}

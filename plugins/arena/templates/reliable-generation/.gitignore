@@ -1,0 +1,15 @@
+# Auto-generated cache (compressed constraints)
+.cache/
+
+# Iteration outputs (regenerated each run)
+iterations/
+
+# Final output (regenerated each run)
+final/
+
+# State files
+state.json
+orchestrator.lock
+
+# HITL temporary files
+hitl/

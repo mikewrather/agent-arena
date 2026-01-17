@@ -1,0 +1,27 @@
+{
+  "description": "Deep analysis using Claude Opus 4.5 only",
+  "mode": "adversarial",
+  "pattern": "sequential",
+  "turns": 6,
+  "stop_on_consensus": true,
+  "order": ["opus-analyst", "opus-critic", "opus-synthesizer"],
+  "agents": {
+    "opus-analyst": {
+      "kind": "claude",
+      "cmd": ["claude", "-p", "--max-turns", "1", "--model", "claude-opus-4-5-20251101"]
+    },
+    "opus-critic": {
+      "kind": "claude",
+      "cmd": ["claude", "-p", "--max-turns", "1", "--model", "claude-opus-4-5-20251101"]
+    },
+    "opus-synthesizer": {
+      "kind": "claude",
+      "cmd": ["claude", "-p", "--max-turns", "1", "--model", "claude-opus-4-5-20251101"]
+    }
+  },
+  "personas": {
+    "opus-analyst": "code-reviewer",
+    "opus-critic": "security-auditor",
+    "opus-synthesizer": "architect"
+  }
+}

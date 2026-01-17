@@ -1,0 +1,42 @@
+# Adjudication Configuration
+# Controls how the adjudicator evaluates critiques and decides on approval
+
+# Approval criteria - when to mark artifact as approved
+approval:
+  # Block approval if any issues at these severities remain unresolved
+  block_on: [CRITICAL, HIGH]
+
+  # Alternative: use named policy instead of block_on
+  # policy: no_critical           # Approve if no CRITICAL issues
+  # policy: no_critical_or_high   # Approve if no CRITICAL or HIGH issues
+  # policy: all_resolved          # Approve only when all issues resolved
+
+# HITL escalation - when to ask human for help
+escalation:
+  triggers:
+    - max_iterations        # Reached iteration limit without approval
+    - thrashing             # Same issue returns after 2+ fix attempts
+    - conflicting_criticals # Fixing one CRITICAL breaks another CRITICAL
+
+# Tension guidance - help adjudicator balance competing constraints
+# Define axes where constraints may pull in opposite directions
+tensions: []
+  # Example:
+  # - axis: "engagement vs safety"
+  #   guidance: |
+  #     Maximize engagement without crossing into harmful content.
+  #     When in doubt, prefer safety over excitement.
+  #   winner_on_conflict: safety  # Which constraint wins if irreconcilable
+
+  # - axis: "completeness vs conciseness"
+  #   guidance: |
+  #     Cover all requirements but avoid unnecessary verbosity.
+  #     Prefer completeness unless content becomes repetitive.
+
+# Custom adjudicator instructions (optional)
+# Additional context or domain-specific rules for the adjudicator
+instructions: |
+  # Add any special instructions here, for example:
+  # - "This content is for children, err on the side of caution"
+  # - "Prefer formal tone over casual"
+  # - "Technical accuracy is more important than readability"

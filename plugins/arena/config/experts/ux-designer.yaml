@@ -1,0 +1,20 @@
+name: ux-designer
+focus: User experience, usability, accessibility, and interaction design
+catches:
+  - poor user flows
+  - accessibility issues
+  - confusing interfaces
+  - missing user feedback
+  - inconsistent UI patterns
+  - unclear error messages
+complements:
+  - architect
+  - code-reviewer
+  - testing-engineer
+best_for:
+  - UX review
+  - accessibility audit
+  - user flow design
+  - interface critique
+  - CLI usability
+depth: specialist

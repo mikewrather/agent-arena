@@ -1,0 +1,8 @@
+{
+  "description": "Dynamic multi-expert panel: router selects best experts for goal",
+  "mode": "collaborative",
+  "pattern": "sequential",
+  "turns": 6,
+  "stop_on_consensus": true,
+  "routing": true
+}

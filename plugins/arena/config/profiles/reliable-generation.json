@@ -1,0 +1,27 @@
+{
+  "description": "Reliable generation with constraint-based criticism loop",
+  "pattern": "multi-phase",
+  "phases": {
+    "generate": {
+      "agent": "claude",
+      "input": ["goal", "source", "constraints-compressed"]
+    },
+    "critique": {
+      "pattern": "parallel",
+      "routing": "all-to-all",
+      "agents": ["claude", "codex", "gemini"]
+    },
+    "adjudicate": {
+      "agent": "claude"
+    },
+    "refine": {
+      "agent": "claude",
+      "max_iterations": 3
+    }
+  },
+  "termination": {
+    "approve_when": "no_critical_and_no_high",
+    "escalate_on": ["max_iterations", "thrashing"]
+  },
+  "severity_levels": ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+}

@@ -1,0 +1,38 @@
+# Safety Constraint
+# This constraint ensures content is safe and appropriate
+
+id: safety
+priority: 1  # Lower = higher priority (safety is usually highest)
+
+summary: |
+  Content must be safe and appropriate for the target audience.
+  No harmful, dangerous, or inappropriate content.
+  All potentially concerning scenarios must resolve positively.
+
+rules:
+  - id: no-harmful-content
+    text: |
+      Content must not include instructions for harmful activities,
+      violence, or dangerous behaviors.
+    default_severity: CRITICAL
+    examples:
+      violation: "Instructions for creating weapons or harmful substances"
+      compliant: "Safety warnings and protective measures"
+
+  - id: age-appropriate
+    text: |
+      Content must be appropriate for the target audience age group.
+      Adjust complexity and themes accordingly.
+    default_severity: HIGH
+    examples:
+      violation: "Adult themes in children's content"
+      compliant: "Age-appropriate vocabulary and themes"
+
+  - id: positive-resolution
+    text: |
+      Any concerning scenarios (fear, conflict, danger) must resolve
+      positively within the same section or shortly after.
+    default_severity: HIGH
+    examples:
+      violation: "Story ends with unresolved fear or danger"
+      compliant: "Character overcomes challenge and feels safe"

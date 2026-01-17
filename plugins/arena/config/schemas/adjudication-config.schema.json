@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "https://triad.dev/schemas/adjudication-config.schema.json",
+  "title": "Adjudication Configuration",
+  "description": "Configuration for how the adjudicator evaluates critiques and decides on approval",
+  "type": "object",
+  "properties": {
+    "approval": {
+      "type": "object",
+      "description": "Criteria for approving the artifact",
+      "properties": {
+        "block_on": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+          },
+          "description": "Block approval if any unresolved issues at these severities"
+        },
+        "policy": {
+          "type": "string",
+          "enum": ["no_critical", "no_critical_or_high", "all_resolved"],
+          "description": "Named approval policy (alternative to block_on)"
+        }
+      }
+    },
+    "escalation": {
+      "type": "object",
+      "description": "When to escalate to human-in-the-loop",
+      "properties": {
+        "triggers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["max_iterations", "thrashing", "conflicting_criticals"]
+          },
+          "description": "Conditions that trigger HITL escalation"
+        }
+      }
+    },
+    "tensions": {
+      "type": "array",
+      "description": "Guidance for balancing competing constraints",
+      "items": {
+        "type": "object",
+        "required": ["axis"],
+        "properties": {
+          "axis": {
+            "type": "string",
+            "description": "The competing constraints (e.g., 'engagement vs safety')"
+          },
+          "guidance": {
+            "type": "string",
+            "description": "Instructions for finding the right balance"
+          },
+          "winner_on_conflict": {
+            "type": "string",
+            "description": "Which constraint wins if irreconcilable (constraint id)"
+          }
+        }
+      }
+    },
+    "instructions": {
+      "type": "string",
+      "description": "Additional context or domain-specific rules for the adjudicator"
+    }
+  },
+  "examples": [
+    {
+      "approval": {
+        "block_on": ["CRITICAL", "HIGH"]
+      },
+      "escalation": {
+        "triggers": ["max_iterations", "thrashing", "conflicting_criticals"]
+      }
+    },
+    {
+      "approval": {
+        "policy": "no_critical"
+      },
+      "escalation": {
+        "triggers": ["max_iterations", "conflicting_criticals"]
+      },
+      "tensions": [
+        {
+          "axis": "engagement vs safety",
+          "guidance": "Maximize engagement without crossing into harmful content. When in doubt, prefer safety.",
+          "winner_on_conflict": "safety"
+        },
+        {
+          "axis": "completeness vs conciseness",
+          "guidance": "Cover all requirements but avoid unnecessary verbosity."
+        }
+      ],
+      "instructions": "This is for a children's app. Err on the side of caution for any safety-related decisions."
+    }
+  ]
+}

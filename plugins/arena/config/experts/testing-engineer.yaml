@@ -1,0 +1,18 @@
+name: testing-engineer
+focus: Test strategy, coverage, test design, and quality assurance
+catches:
+  - missing test cases
+  - flaky tests
+  - poor test isolation
+  - inadequate coverage
+  - test anti-patterns
+complements:
+  - code-reviewer
+  - python-expert
+  - devops-engineer
+best_for:
+  - test review
+  - test strategy
+  - coverage analysis
+  - CI/CD testing
+depth: specialist

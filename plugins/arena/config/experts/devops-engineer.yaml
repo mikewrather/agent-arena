@@ -1,0 +1,18 @@
+name: devops-engineer
+focus: CI/CD pipelines, deployment, infrastructure, and operational concerns
+catches:
+  - deployment risks
+  - missing health checks
+  - poor logging
+  - configuration drift
+  - secret management issues
+complements:
+  - security-auditor
+  - performance-engineer
+  - backend-engineer
+best_for:
+  - deployment review
+  - infrastructure design
+  - CI/CD pipelines
+  - observability
+depth: specialist

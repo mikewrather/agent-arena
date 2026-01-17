@@ -1,0 +1,13 @@
+# Arena runtime state - never commit
+runs/
+state.json
+thread.jsonl
+resolution.json
+live.log
+hitl/
+
+# Config overrides - OK to commit
+# Uncomment to ignore your custom configs:
+# !modes/
+# !personas/
+# !profiles/

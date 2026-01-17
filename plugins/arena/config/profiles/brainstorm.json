@@ -1,0 +1,12 @@
+{
+  "description": "Structured ideation with sequential questioning and diverse perspectives",
+  "mode": "brainstorming",
+  "pattern": "sequential",
+  "turns": 8,
+  "stop_on_stagnation": true,
+  "personas": {
+    "claude": "architect",
+    "codex": "performance-engineer",
+    "gemini": "ux-designer"
+  }
+}

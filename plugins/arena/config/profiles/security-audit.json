@@ -1,0 +1,12 @@
+{
+  "description": "Security-focused audit with parallel adversarial analysis",
+  "mode": "adversarial",
+  "pattern": "parallel",
+  "turns": 4,
+  "stop_on_consensus": true,
+  "personas": {
+    "claude": "security-auditor",
+    "codex": "security-auditor",
+    "gemini": "security-auditor"
+  }
+}

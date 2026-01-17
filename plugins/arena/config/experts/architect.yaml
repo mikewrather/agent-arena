@@ -1,0 +1,21 @@
+name: architect
+focus: Traditional system design, architecture patterns, scalability, modularity, and technical decision-making
+catches:
+  - design anti-patterns
+  - scalability bottlenecks
+  - tight coupling
+  - missing abstractions
+  - over-engineering
+  - poor separation of concerns
+complements:
+  - security-auditor
+  - performance-engineer
+  - backend-engineer
+  - agent-architect
+best_for:
+  - system design review
+  - traditional architecture
+  - technical decisions
+  - refactoring strategy
+  - microservices design
+depth: generalist

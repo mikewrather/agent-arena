@@ -1,0 +1,27 @@
+{
+  "description": "Parallel deck/essay review with 3 expert perspectives",
+  "mode": "collaborative",
+  "pattern": "parallel",
+  "turns": 2,
+  "stop_on_consensus": true,
+  "agents": {
+    "claude": {
+      "kind": "claude",
+      "cmd": ["claude", "-p", "--max-turns", "1", "--model", "sonnet"]
+    },
+    "codex": {
+      "kind": "codex",
+      "cmd": ["codex", "exec", "--sandbox", "read-only", "-o", "-", "-"],
+      "suppress_stderr": true
+    },
+    "gemini": {
+      "kind": "gemini",
+      "cmd": ["gemini"]
+    }
+  },
+  "personas": {
+    "claude": "best-practices-reviewer",
+    "codex": "best-practices-reviewer",
+    "gemini": "best-practices-reviewer"
+  }
+}

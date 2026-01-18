@@ -164,6 +164,59 @@ def validate_name(name: str, kind: str) -> None:
         )
 
 
+def is_subpath(path: Path, parent: Path) -> bool:
+    """Check if path is within parent directory (security check)."""
+    try:
+        path.resolve().relative_to(parent.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def resolve_script_path(
+    path_template: str,
+    ctx: Dict[str, Path],
+    base_dir: Path,
+) -> Path:
+    """Resolve script path template with variable substitution and security check.
+
+    Variables supported:
+        {{run_dir}} - The run directory (.arena/runs/<name>/)
+        {{project_root}} - Project root (where .arena/ lives)
+        {{artifact}} - Path to current artifact file
+        {{source}} - Path to source.md (if exists)
+        {{constraint_dir}} - Directory containing the constraint file
+
+    Args:
+        path_template: Path string with optional {{variables}}
+        ctx: Dict mapping variable names to Path values
+        base_dir: Base directory for relative path resolution
+
+    Returns:
+        Resolved absolute Path
+
+    Raises:
+        ValueError: If resolved path escapes allowed directories
+    """
+    resolved = path_template
+    for var, value in ctx.items():
+        resolved = resolved.replace(f"{{{{{var}}}}}", str(value))
+
+    path = Path(resolved)
+    if not path.is_absolute():
+        path = base_dir / path
+    path = path.resolve()
+
+    # Security: must be within allowed directories
+    allowed = [ctx.get("run_dir"), ctx.get("project_root")]
+    allowed = [a for a in allowed if a is not None]
+
+    if not any(is_subpath(path, root) for root in allowed):
+        raise ValueError(f"Script path escapes allowed directories: {path}")
+
+    return path
+
+
 class OrchestratorLock:
     """File-based lock to prevent concurrent orchestrator runs."""
 
@@ -269,6 +322,8 @@ class Constraint:
     summary: str
     rules: List[ConstraintRule]
     source_path: Optional[Path] = None
+    script: Optional[str] = None  # Optional script to run before critique
+    sources: Optional[List[str]] = None  # Reference files for critic
 
     @classmethod
     def from_yaml(cls, path: Path) -> "Constraint":
@@ -288,6 +343,8 @@ class Constraint:
             summary=content.get("summary", ""),
             rules=rules,
             source_path=path,
+            script=content.get("script"),
+            sources=content.get("sources"),
         )
 
 
@@ -616,8 +673,21 @@ def build_critic_prompt(
     artifact: str,
     goal: str,
     iteration: int,
+    run_dir: Optional[Path] = None,
+    project_root: Optional[Path] = None,
+    artifact_path: Optional[Path] = None,
 ) -> str:
-    """Build prompt for a critic phase."""
+    """Build prompt for a critic phase.
+
+    Args:
+        constraint: The constraint to evaluate against
+        artifact: The artifact content to review
+        goal: The goal context
+        iteration: Current iteration number
+        run_dir: Run directory for script path resolution
+        project_root: Project root for script path resolution
+        artifact_path: Path to the artifact file (for script stdin)
+    """
     rules_section = []
     for rule in constraint.rules:
         rule_text = f"### Rule: {rule.id}\n{rule.text}\nDefault Severity: {rule.default_severity}"
@@ -628,6 +698,65 @@ def build_critic_prompt(
                 rule_text += f"\nExample Compliant: {rule.examples['compliant']}"
         rules_section.append(rule_text)
 
+    # Build script execution section if constraint has a script
+    script_section = ""
+    if constraint.script and run_dir and project_root and artifact_path:
+        try:
+            ctx = {
+                "run_dir": run_dir,
+                "project_root": project_root,
+                "artifact": artifact_path,
+                "source": run_dir / "source.md",
+                "constraint_dir": constraint.source_path.parent if constraint.source_path else run_dir / "constraints",
+            }
+            base_dir = constraint.source_path.parent if constraint.source_path else run_dir / "constraints"
+            resolved_script = resolve_script_path(constraint.script, ctx, base_dir)
+            script_section = f"""
+PRE-ANALYSIS SCRIPT
+Before your analysis, run this script to get additional validation information:
+```
+{resolved_script} < {artifact_path}
+```
+
+Execute the script and interpret the results as part of your critique.
+Include any script output, errors, or issues in your findings.
+If the script reports validation errors, treat them as findings in your response.
+
+"""
+        except ValueError as e:
+            logger.warning(f"Invalid script path in constraint {constraint.id}: {e}")
+
+    # Build sources section if constraint has reference sources
+    sources_section = ""
+    if constraint.sources and run_dir and project_root:
+        ctx = {
+            "run_dir": run_dir,
+            "project_root": project_root,
+            "artifact": artifact_path,
+            "source": run_dir / "source.md",
+            "constraint_dir": constraint.source_path.parent if constraint.source_path else run_dir / "constraints",
+        }
+        base_dir = constraint.source_path.parent if constraint.source_path else run_dir / "constraints"
+        resolved_sources = []
+        for source_path_template in constraint.sources:
+            try:
+                resolved = resolve_script_path(source_path_template, ctx, base_dir)
+                if resolved.exists():
+                    resolved_sources.append(resolved)
+                else:
+                    logger.warning(f"Source file not found: {resolved}")
+            except ValueError as e:
+                logger.warning(f"Invalid source path in constraint {constraint.id}: {e}")
+
+        if resolved_sources:
+            sources_list = "\n".join(f"- {p}" for p in resolved_sources)
+            sources_section = f"""
+REFERENCE SOURCES
+Read these files for context before your analysis:
+{sources_list}
+
+"""
+
     return f"""\
 SYSTEM CONTEXT
 You are a critic agent reviewing content for constraint: {constraint.id}
@@ -637,8 +766,7 @@ CONSTRAINT: {constraint.id.upper()}
 Priority: {constraint.priority}
 
 {constraint.summary}
-
-RULES TO EVALUATE
+{sources_section}{script_section}RULES TO EVALUATE
 {chr(10).join(rules_section)}
 
 GOAL CONTEXT
@@ -1608,6 +1736,10 @@ async def run_multi_phase_orchestrator(
             critique_tasks = []
             task_info = []
 
+            # Calculate project_root (parent of state_dir, which is .arena)
+            project_root = state_dir.parent
+            artifact_path = iter_dir / "artifact.md"
+
             for constraint in constraints:
                 for agent_name in critique_agents:
                     agent = agents[agent_name]
@@ -1616,6 +1748,9 @@ async def run_multi_phase_orchestrator(
                         artifact=artifact,
                         goal=goal,
                         iteration=iteration,
+                        run_dir=run_dir,
+                        project_root=project_root,
+                        artifact_path=artifact_path,
                     )
 
                     write_text_atomic(

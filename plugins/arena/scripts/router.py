@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Intelligent Expert Router for Triad Orchestration
+Intelligent Expert Router for Arena Orchestration
 
 LLM-native routing using Claude's semantic understanding.
 No embeddings - leverages Claude Code's native reasoning.
@@ -39,7 +39,7 @@ from typing import Optional
 
 import yaml
 
-logger = logging.getLogger("triad.router")
+logger = logging.getLogger("arena.router")
 
 # Default experts if routing fails
 DEFAULT_PANEL = ["architect", "code-reviewer", "security-auditor"]
@@ -142,11 +142,31 @@ def call_claude_router(prompt: str) -> Optional[dict]:
         response = json.loads(result.stdout)
 
         # Extract the actual response text
-        if isinstance(response, dict) and "result" in response:
-            text = response["result"]
-        elif isinstance(response, dict) and "content" in response:
-            text = response["content"]
-        else:
+        text = None
+
+        # Handle array format from Claude CLI (contains events, assistant message, result)
+        if isinstance(response, list):
+            # Look for the "result" type entry (usually last)
+            for entry in reversed(response):
+                if isinstance(entry, dict) and entry.get("type") == "result":
+                    text = entry.get("result")
+                    break
+            # Fallback: look for assistant message
+            if text is None:
+                for entry in response:
+                    if isinstance(entry, dict) and entry.get("type") == "assistant":
+                        msg = entry.get("message", {})
+                        content = msg.get("content", [])
+                        if content and isinstance(content, list) and content[0].get("type") == "text":
+                            text = content[0].get("text")
+                            break
+        elif isinstance(response, dict):
+            if "result" in response:
+                text = response["result"]
+            elif "content" in response:
+                text = response["content"]
+
+        if text is None:
             text = result.stdout
 
         # Find JSON in response
@@ -173,7 +193,7 @@ def call_claude_router(prompt: str) -> Optional[dict]:
             except:
                 pass
 
-        logger.warning(f"Could not parse router response: {text[:200]}")
+        logger.warning(f"Could not parse router response: {text[:200] if text else 'None'}")
         return None
 
     except subprocess.TimeoutExpired:
@@ -189,16 +209,16 @@ def select_experts(
     context: Optional[str],
     expert_pool: list[Expert],
     mode: str = "collaborative",
-    k: int = 3,
+    max_experts: Optional[int] = None,
 ) -> RoutingResult:
-    """Use Claude to select top-k complementary experts.
+    """Use Claude to select all relevant experts for a goal.
 
     Args:
         goal: The task/goal to route
         context: Optional additional context
         expert_pool: List of expert definitions
         mode: Orchestration mode (collaborative/adversarial/brainstorming)
-        k: Target number of experts
+        max_experts: Optional cap on experts (None = no limit, select all relevant)
 
     Returns:
         RoutingResult with selected experts and metadata.
@@ -226,6 +246,12 @@ def select_experts(
         "brainstorming": "Select experts with diverse backgrounds to generate varied ideas. Prefer creative and cross-domain thinkers.",
     }
 
+    # Build selection instruction based on max_experts
+    if max_experts is not None:
+        selection_instruction = f"Select ALL relevant experts for this goal (minimum 1, maximum {max_experts}). Only omit experts that add no value."
+    else:
+        selection_instruction = "Select ALL relevant experts for this goal (minimum 1). Only omit experts that genuinely add no value to this task."
+
     prompt = f"""You are an expert router for a multi-agent review system. Select the best experts for this task.
 
 ## Goal
@@ -252,11 +278,11 @@ def select_experts(
 - **adversarial**: Pick experts who will find DIFFERENT issues. Overlap in catches is OK if they'll challenge each other.
 - **brainstorming**: Pick diverse backgrounds. Prefer generalists and cross-domain experts.
 
-Select exactly {k} experts.
+{selection_instruction}
 
 ## Response Format
 Return ONLY valid JSON (no markdown, no explanation outside JSON):
-{{"selected": ["expert1", "expert2", "expert3"], "reasoning": "One paragraph explaining selection", "confidence": "high|medium|low"}}
+{{"selected": ["expert1", "expert2", ...], "reasoning": "One paragraph explaining selection", "confidence": "high|medium|low"}}
 """
 
     response = call_claude_router(prompt)
@@ -307,12 +333,15 @@ Return ONLY valid JSON (no markdown, no explanation outside JSON):
             error=error_msg,
         )
 
-    # If fewer than k experts selected, log it (but don't silently pad)
-    if len(selected) < k:
-        logger.warning(f"Router selected {len(selected)} experts but {k} were requested")
+    # Apply max_experts cap if specified
+    if max_experts is not None and len(selected) > max_experts:
+        logger.info(f"Capping selected experts from {len(selected)} to {max_experts}")
+        selected = selected[:max_experts]
+
+    logger.info(f"Router selected {len(selected)} experts: {selected}")
 
     return RoutingResult(
-        selected=selected[:k],
+        selected=selected,
         reasoning=response.get("reasoning", ""),
         confidence=response.get("confidence", "medium"),
         mode=mode,
@@ -337,7 +366,7 @@ def main():
     parser.add_argument("--context", help="Additional context")
     parser.add_argument("--experts-dir", type=Path, help="Directory with expert YAML files")
     parser.add_argument("--mode", default="collaborative", choices=["collaborative", "adversarial", "brainstorming"])
-    parser.add_argument("-k", type=int, default=3, help="Number of experts to select")
+    parser.add_argument("--max-experts", type=int, help="Maximum experts to select (default: no limit)")
     parser.add_argument("--output", type=Path, help="Output file for routing result")
 
     args = parser.parse_args()
@@ -353,7 +382,7 @@ def main():
         context=args.context,
         expert_pool=experts,
         mode=args.mode,
-        k=args.k,
+        max_experts=args.max_experts,
     )
 
     # Output

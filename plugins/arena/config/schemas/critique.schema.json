@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
-  "$id": "https://triad.dev/schemas/critique.schema.json",
+  "$id": "https://arena.dev/schemas/critique.schema.json",
   "title": "Critique",
   "description": "Structured critique output from a critic agent in the reliable generation pipeline",
   "type": "object",

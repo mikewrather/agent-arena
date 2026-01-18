@@ -91,7 +91,7 @@ arena/
 │   ├── modes/               # Interaction modes
 │   └── schemas/             # JSON schemas
 ├── scripts/
-│   └── triad.py             # Main orchestrator
+│   └── arena.py             # Main orchestrator
 └── templates/
     └── reliable-generation/ # Constraint templates
 ```

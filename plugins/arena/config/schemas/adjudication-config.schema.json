@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
-  "$id": "https://triad.dev/schemas/adjudication-config.schema.json",
+  "$id": "https://arena.dev/schemas/adjudication-config.schema.json",
   "title": "Adjudication Configuration",
   "description": "Configuration for how the adjudicator evaluates critiques and decides on approval",
   "type": "object",

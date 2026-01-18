@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Agent Arena (Triad) Orchestrator
+Agent Arena Orchestrator
 
 File-driven multi-agent orchestration for Claude Code, Codex, and Gemini CLIs.
 
@@ -39,7 +39,7 @@ logging.basicConfig(
     format="[%(asctime)s] %(levelname)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
-logger = logging.getLogger("triad")
+logger = logging.getLogger("arena")
 
 EXIT_OK = 0
 EXIT_HITL = 10
@@ -1035,7 +1035,18 @@ def merge_profile(cfg: Dict[str, Any], profile: Dict[str, Any]) -> Dict[str, Any
     merged = cfg.copy()
 
     # Simple overrides
-    for key in ["mode", "default_pattern", "order"]:
+    simple_keys = [
+        "mode", "default_pattern", "order",
+        # Routing and multi-expert config
+        "routing", "expert_assignment", "expert_agent", "max_experts",
+        # Research config
+        "enable_research", "research_agent",
+        # Multi-phase config
+        "phases",
+        # Termination config
+        "termination",
+    ]
+    for key in simple_keys:
         if key in profile:
             merged[key] = profile[key]
 
@@ -1943,7 +1954,7 @@ async def _run_orchestrator_locked(
     live_link.symlink_to(live_log_path.relative_to(state_dir))
 
     write_live("=" * 60)
-    write_live(f"TRIAD ORCHESTRATOR - {run_name}")
+    write_live(f"ARENA ORCHESTRATOR - {run_name}")
     write_live(f"Watch: tail -f {state_dir}/live.log")
     write_live("=" * 60)
 
@@ -2075,6 +2086,15 @@ async def _run_orchestrator_inner(
         write_live(f"Router should be at: {SCRIPT_DIR / 'router.py'}")
         return EXIT_ERROR
 
+    # Expert assignment configuration
+    expert_assignment = cfg.get("expert_assignment", None)  # None, "single_agent", or "matrix"
+    expert_agent_name = cfg.get("expert_agent", "codex")  # Used for single_agent mode
+    max_experts_cfg = cfg.get("max_experts", None)  # None = no limit
+
+    # Multi-expert task list: [(agent_name, persona_name, persona_body), ...]
+    # Only populated when expert_assignment is configured
+    multi_expert_tasks: List[Tuple[str, str, str]] = []
+
     if routing_enabled and ROUTER_AVAILABLE:
         logger.info("Dynamic routing enabled - selecting experts for goal...")
         write_live("=" * 40)
@@ -2093,13 +2113,13 @@ async def _run_orchestrator_inner(
             write_live("Expected .yaml files defining expert personas")
             return EXIT_ERROR
 
-        # Run router to select experts
+        # Run router to select ALL relevant experts (with optional cap)
         routing_result = select_experts(
             goal=goal,
             context=context,
             expert_pool=expert_pool,
             mode=mode_name,
-            k=len(order),  # Select as many experts as agents
+            max_experts=max_experts_cfg,
         )
 
         # Check if routing succeeded - fail loudly if not
@@ -2109,63 +2129,95 @@ async def _run_orchestrator_inner(
             write_live(f"ERROR: {error_msg}")
             return EXIT_ERROR
 
-        # Validate routing produced enough results
-        if len(routing_result.selected) < len(order):
+        # Save routing decision for auditability
+        save_routing_result(routing_result, run_dir)
+
+        selected_experts = routing_result.selected
+        logger.info(f"Router selected: {selected_experts} (confidence: {routing_result.confidence})")
+        write_live(f"Selected experts ({len(selected_experts)}): {', '.join(selected_experts)}")
+        write_live(f"Confidence: {routing_result.confidence}")
+        write_live(f"Reasoning: {routing_result.reasoning[:200]}...")
+
+        # Handle expert assignment strategy
+        if expert_assignment == "single_agent":
+            # All experts go to one agent (e.g., codex)
+            write_live(f"Assignment: single_agent (all to {expert_agent_name})")
+            for persona_name in selected_experts:
+                try:
+                    _, persona_body = load_persona(state_dir, persona_name, global_dir)
+                    multi_expert_tasks.append((expert_agent_name, persona_name, persona_body))
+                except ValueError as e:
+                    error_msg = f"Persona '{persona_name}' not found"
+                    logger.error(error_msg)
+                    write_live(f"ERROR: {error_msg}")
+                    return EXIT_ERROR
+
+        elif expert_assignment == "matrix":
+            # Full matrix: each expert × each agent
+            write_live(f"Assignment: matrix ({len(selected_experts)} experts × {len(order)} agents)")
+            for persona_name in selected_experts:
+                try:
+                    _, persona_body = load_persona(state_dir, persona_name, global_dir)
+                    for agent_name in order:
+                        multi_expert_tasks.append((agent_name, persona_name, persona_body))
+                except ValueError as e:
+                    error_msg = f"Persona '{persona_name}' not found"
+                    logger.error(error_msg)
+                    write_live(f"ERROR: {error_msg}")
+                    return EXIT_ERROR
+
+        else:
+            # Legacy mode: map 1:1 to agents (for backwards compatibility)
+            if len(selected_experts) < len(order):
+                error_msg = (
+                    f"Router selected {len(selected_experts)} experts "
+                    f"but {len(order)} agents need personas (use expert_assignment config for N experts)"
+                )
+                logger.error(error_msg)
+                write_live(f"ERROR: {error_msg}")
+                return EXIT_ERROR
+
+            for i, agent_name in enumerate(order):
+                if i < len(selected_experts):
+                    personas_cfg[agent_name] = selected_experts[i]
+
+        write_live("=" * 40)
+
+    # Skip persona validation when using multi-expert tasks (personas already loaded)
+    agent_personas: Dict[str, str] = {}
+    if not multi_expert_tasks:
+        # Validate persona configuration: either routing populated personas or they were explicitly set
+        # This prevents silent fallback to a non-existent "default" persona
+        missing_personas = [agent for agent in order if agent not in personas_cfg]
+        if missing_personas and not routing_enabled:
             error_msg = (
-                f"Router selected {len(routing_result.selected)} experts "
-                f"but {len(order)} agents need personas"
+                f"No personas configured for agents: {missing_personas}. "
+                f"Either enable routing (routing: true) or specify personas explicitly in profile."
             )
             logger.error(error_msg)
             write_live(f"ERROR: {error_msg}")
             return EXIT_ERROR
 
-        # Save routing decision for auditability
-        save_routing_result(routing_result, run_dir)
-
-        # Map selected experts to agents (in order)
-        for i, agent_name in enumerate(order):
-            if i < len(routing_result.selected):
-                personas_cfg[agent_name] = routing_result.selected[i]
-
-        logger.info(f"Router selected: {routing_result.selected} (confidence: {routing_result.confidence})")
-        write_live(f"Selected experts: {', '.join(routing_result.selected)}")
-        write_live(f"Confidence: {routing_result.confidence}")
-        write_live(f"Reasoning: {routing_result.reasoning[:200]}...")
-        write_live("=" * 40)
-
-    # Validate persona configuration: either routing populated personas or they were explicitly set
-    # This prevents silent fallback to a non-existent "default" persona
-    missing_personas = [agent for agent in order if agent not in personas_cfg]
-    if missing_personas and not routing_enabled:
-        error_msg = (
-            f"No personas configured for agents: {missing_personas}. "
-            f"Either enable routing (routing: true) or specify personas explicitly in profile."
-        )
-        logger.error(error_msg)
-        write_live(f"ERROR: {error_msg}")
-        return EXIT_ERROR
-
-    # Load personas per agent (checks local first, then global)
-    # Note: personas_cfg was populated by routing above if enabled
-    agent_personas: Dict[str, str] = {}
-    for agent_name in order:
-        persona_name = personas_cfg.get(agent_name)
-        if not persona_name:
-            # This shouldn't happen if validation above passed, but be defensive
-            error_msg = f"No persona configured for agent '{agent_name}'"
-            logger.error(error_msg)
-            write_live(f"ERROR: {error_msg}")
-            return EXIT_ERROR
-        try:
-            _, persona_body = load_persona(state_dir, persona_name, global_dir)
-            agent_personas[agent_name] = persona_body
-        except ValueError as e:
-            # Enhanced error: include where we looked for the persona
-            error_msg = f"Persona '{persona_name}' not found for agent '{agent_name}'"
-            logger.error(error_msg)
-            write_live(f"ERROR: {error_msg}")
-            write_live(f"Searched: {state_dir / 'personas'}, {global_dir / 'personas' if global_dir else 'N/A'}")
-            return EXIT_ERROR
+        # Load personas per agent (checks local first, then global)
+        # Note: personas_cfg was populated by routing above if enabled
+        for agent_name in order:
+            persona_name = personas_cfg.get(agent_name)
+            if not persona_name:
+                # This shouldn't happen if validation above passed, but be defensive
+                error_msg = f"No persona configured for agent '{agent_name}'"
+                logger.error(error_msg)
+                write_live(f"ERROR: {error_msg}")
+                return EXIT_ERROR
+            try:
+                _, persona_body = load_persona(state_dir, persona_name, global_dir)
+                agent_personas[agent_name] = persona_body
+            except ValueError as e:
+                # Enhanced error: include where we looked for the persona
+                error_msg = f"Persona '{persona_name}' not found for agent '{agent_name}'"
+                logger.error(error_msg)
+                write_live(f"ERROR: {error_msg}")
+                write_live(f"Searched: {state_dir / 'personas'}, {global_dir / 'personas' if global_dir else 'N/A'}")
+                return EXIT_ERROR
 
     # Pattern priority: CLI > mode > config > "sequential"
     pattern = (
@@ -2183,6 +2235,109 @@ async def _run_orchestrator_inner(
     start_turn = state.get("turn", 0)
     max_turns = start_turn + args.turns
     cycle_length = len(order)
+
+    # Multi-expert execution path: runs all expert tasks in parallel (single round)
+    if multi_expert_tasks:
+        write_live("=" * 40)
+        write_live(f"MULTI-EXPERT REVIEW ({len(multi_expert_tasks)} tasks)")
+        write_live("=" * 40)
+
+        turn_dir = run_dir / "turns" / "turn_0001"
+        turn_dir.mkdir(parents=True, exist_ok=True)
+
+        thread_tail = tail_thread(thread_path)
+        tasks = []
+        task_info: List[Tuple[str, str]] = []  # [(agent_name, persona_name), ...]
+
+        for agent_name, persona_name, persona_body in multi_expert_tasks:
+            agent = agents[agent_name]
+            prompt = build_prompt(
+                agent_name=agent_name,
+                mode=mode_name,
+                mode_body=mode_body,
+                persona_body=persona_body,
+                pattern="parallel",
+                turn_idx=1,
+                max_turns=1,
+                goal=goal,
+                context=context,
+                summary=summary,
+                thread_tail=thread_tail,
+                hitl_answers=None,
+                enable_research=enable_research,
+            )
+            write_text_atomic(turn_dir / f"prompt_{agent_name}_{persona_name}.txt", prompt)
+            tasks.append(run_agent(agent, prompt, stream=not args.no_stream))
+            task_info.append((agent_name, persona_name))
+
+        write_live(f"Running {len(tasks)} parallel expert reviews...")
+        for agent_name, persona_name in task_info:
+            write_live(f"  • {persona_name} ({agent_name})")
+
+        results = await asyncio.gather(*tasks)
+
+        # Collect results
+        all_messages = []
+        hitl_questions: List[Dict[str, Any]] = []
+
+        for (env, raw_out, raw_err), (agent_name, persona_name) in zip(results, task_info):
+            task_id = f"{agent_name}_{persona_name}"
+            write_live(f">>> {persona_name} ({agent_name}): status={env.status}")
+            all_messages.append(f"**{persona_name}** ({agent_name}): {env.message}")
+
+            write_text_atomic(
+                turn_dir / f"out_{task_id}.json",
+                json.dumps(env.to_dict(), indent=2),
+            )
+            if raw_err:
+                write_text_atomic(turn_dir / f"stderr_{task_id}.log", raw_err)
+
+            append_jsonl_durable(
+                thread_path,
+                {
+                    "id": sha256(f"{task_id}:{utc_now_iso()}:1"),
+                    "ts": utc_now_iso(),
+                    "turn": 1,
+                    "agent": agent_name,
+                    "persona": persona_name,
+                    "role": "assistant",
+                    "status": env.status,
+                    "content": env.message,
+                    "questions": env.questions,
+                    "artifacts": [a for a in env.artifacts],
+                    "confidence": env.confidence,
+                    "agrees_with": env.agrees_with,
+                },
+            )
+
+            if env.status == "needs_human" and env.questions:
+                hitl_questions.append(
+                    {"agent": agent_name, "persona": persona_name, "questions": env.questions}
+                )
+
+        # Check for HITL
+        if hitl_questions:
+            write_hitl_questions(run_dir, hitl_questions, 1)
+            state["awaiting_human"] = True
+            save_json_atomic(state_path, state)
+            write_live(f"\nHITL: {len(hitl_questions)} experts need human input")
+            write_agent_result(run_dir, "needs_human", EXIT_HITL, questions=hitl_questions)
+            return EXIT_HITL
+
+        # Write combined summary
+        combined_summary = "\n\n---\n\n".join(all_messages)
+        final_dir = run_dir / "final"
+        final_dir.mkdir(parents=True, exist_ok=True)
+        write_text_atomic(final_dir / "expert_reviews.md", combined_summary)
+
+        write_live("=" * 40)
+        write_live(f"Multi-expert review complete: {len(results)} reviews collected")
+        write_live(f"Output: {final_dir / 'expert_reviews.md'}")
+        write_live("=" * 40)
+
+        write_resolution(run_dir, "multi_expert_complete", 1, f"Completed {len(results)} expert reviews")
+        write_agent_result(run_dir, "done", EXIT_OK, summary=f"Multi-expert review complete ({len(results)} reviews)")
+        return EXIT_OK
 
     for turn in range(start_turn, max_turns):
         state["turn"] = turn
@@ -2496,8 +2651,8 @@ async def _run_orchestrator_inner(
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Agent Arena (Triad) Orchestrator")
-    ap.add_argument("--config", default="triad.config.json", help="Config file path")
+    ap = argparse.ArgumentParser(description="Agent Arena Orchestrator")
+    ap.add_argument("--config", default="arena.config.json", help="Config file path")
     ap.add_argument(
         "--name", "-n",
         help="Run name (creates .arena/runs/<name>/). If not set, uses timestamp."
@@ -2545,7 +2700,7 @@ def main() -> int:
             print(template_readme.read_text(encoding="utf-8"))
         else:
             print(f"Template README not found at: {template_readme}")
-            print("\nExpected location: triad-plugin/templates/reliable-generation/README.md")
+            print("\nExpected location: arena-plugin/templates/reliable-generation/README.md")
         return EXIT_OK
 
     return asyncio.run(run_orchestrator(args))

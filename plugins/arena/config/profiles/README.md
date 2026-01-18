@@ -9,12 +9,12 @@ Configuration presets that bundle mode, pattern, personas, and settings into reu
 /arena:run "Review auth module" -p security-audit
 
 # Direct invocation (plugin path)
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/triad.py \
-  --config ${CLAUDE_PLUGIN_ROOT}/config/triad.config.json \
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
+  --config ${CLAUDE_PLUGIN_ROOT}/config/arena.config.json \
   --name my-review -p security-audit
 
 # CLI flags override profile settings
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/triad.py --name my-review -p code-review --turns 10
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py --name my-review -p code-review --turns 10
 ```
 
 ---
@@ -360,17 +360,17 @@ rules:
 **Usage:**
 ```bash
 # Create run with reliable-generation profile
-python3 ~/.arena/triad.py --name story-gen -p reliable-generation
+python3 ~/.arena/arena.py --name story-gen -p reliable-generation
 
 # Edit goal and add constraints
 vim .arena/runs/story-gen/goal.md
 vim .arena/runs/story-gen/constraints/safety.yaml
 
 # Preview constraint routing without executing
-python3 ~/.arena/triad.py --name story-gen -p reliable-generation --dry-run
+python3 ~/.arena/arena.py --name story-gen -p reliable-generation --dry-run
 
 # Run with custom max iterations
-python3 ~/.arena/triad.py --name story-gen -p reliable-generation --max-iterations 5
+python3 ~/.arena/arena.py --name story-gen -p reliable-generation --max-iterations 5
 ```
 
 ---

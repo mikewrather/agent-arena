@@ -420,8 +420,8 @@ Interactive setup for users who want to edit files manually.
 Preview constraint routing without executing:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/triad.py \
-  --config ${CLAUDE_PLUGIN_ROOT}/config/triad.config.json \
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
+  --config ${CLAUDE_PLUGIN_ROOT}/config/arena.config.json \
   --name <name> -p reliable-generation --dry-run
 ```
 

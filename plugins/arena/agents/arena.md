@@ -39,12 +39,12 @@ Extract from the prompt:
 
 The plugin scripts are located at `${CLAUDE_PLUGIN_ROOT}` or can be found at:
 ```
-~/.claude/plugins/cache/agent-arena/arena/*/scripts/triad.py
+~/.claude/plugins/cache/agent-arena/arena/*/scripts/arena.py
 ```
 
 Use Glob to find the actual path:
 ```bash
-ls ~/.claude/plugins/cache/agent-arena/arena/*/scripts/triad.py
+ls ~/.claude/plugins/cache/agent-arena/arena/*/scripts/arena.py
 ```
 
 ### Step 3: Initialize Run
@@ -83,11 +83,11 @@ ls ~/.claude/plugins/cache/agent-arena/arena/*/scripts/triad.py
 
 ### Step 4: Execute Orchestrator
 
-Run the triad.py script:
+Run the arena.py script:
 
 ```bash
-python3 <plugin-root>/scripts/triad.py \
-  --config <plugin-root>/config/triad.config.json \
+python3 <plugin-root>/scripts/arena.py \
+  --config <plugin-root>/config/arena.config.json \
   --name <run-name> \
   -p <profile>
 ```
@@ -165,7 +165,7 @@ Format your response as:
 
 ## Error Recovery
 
-If triad.py fails:
+If arena.py fails:
 1. Check if `.arena/` directory exists and is writable
 2. Verify the plugin scripts path is correct
 3. Check for Python/CLI availability

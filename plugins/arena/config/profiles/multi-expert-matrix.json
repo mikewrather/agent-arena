@@ -1,0 +1,10 @@
+{
+  "description": "Full matrix review: all relevant experts × all 3 agents",
+  "mode": "collaborative",
+  "pattern": "parallel",
+  "turns": 6,
+  "stop_on_consensus": true,
+  "routing": true,
+  "expert_assignment": "matrix",
+  "max_experts": null
+}

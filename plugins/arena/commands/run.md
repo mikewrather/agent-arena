@@ -1,7 +1,7 @@
 ---
 description: Run multi-agent orchestration in background
 argument-hint: <goal> [-p profile]
-allowed-tools: Task, Read, Write, AskUserQuestion
+allowed-tools: Bash, Read, Write, AskUserQuestion
 ---
 
 # Arena Run
@@ -38,20 +38,33 @@ Extract from `$ARGUMENTS`:
 - Goal text (required)
 - `-p` or `--profile`: profile name (default: `code-review`)
 
-### 2. Launch Background Agent
+### 2. Generate Run Name and Setup
 
-Use the Task tool to launch arena in background:
+1. Generate run name from goal (kebab-case, max 30 chars)
+2. Create run directory:
+   ```bash
+   mkdir -p .arena/runs/<run-name>
+   ```
+3. Write goal.yaml:
+   ```yaml
+   goal: |
+     <goal from prompt>
+   ```
 
+### 3. Launch Orchestrator
+
+Run arena.py directly via Bash (in background):
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
+  --config ${CLAUDE_PLUGIN_ROOT}/config/arena.config.json \
+  --name <run-name> \
+  -p <profile> &
 ```
-Task(
-  subagent_type="arena",
-  prompt="goal: <user's goal>\nprofile: <profile>",
-  run_in_background=true,
-  description="Running arena orchestration"
-)
-```
 
-### 3. Notify User
+**Note:** Use `&` to run in background, or use Bash tool's `run_in_background=true` parameter.
+
+### 4. Notify User
 
 Tell the user:
 

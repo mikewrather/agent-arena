@@ -508,14 +508,27 @@ Primary mode for agent/programmatic callers.
    ```
 
 6. **Launch orchestrator:**
+
+   Run arena.py directly via Bash to ensure proper orchestration:
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
+     --config ${CLAUDE_PLUGIN_ROOT}/config/arena.config.json \
+     --name <name> \
+     -p reliable-generation \
+     --max-iterations <N>
    ```
-   Task(
-     subagent_type="arena",
-     prompt="Run reliable-generation for: <name>\nMax iterations: <N>",
-     run_in_background=true,
-     description="Generating with constraints"
-   )
-   ```
+
+   **Exit codes:**
+   - `0`: Completed successfully (approved)
+   - `10`: HITL needed - human input required
+   - `11`: Max iterations reached without approval
+   - `1`: Error
+
+   **Handle HITL (exit code 10):**
+   1. Read `.arena/runs/<name>/hitl/questions.json`
+   2. Use AskUserQuestion to collect answers
+   3. Write to `.arena/runs/<name>/hitl/answers.json`
+   4. Re-run the orchestrator command
 
 7. **Report to caller:**
    ```
@@ -572,7 +585,15 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
 
 2. If missing, offer to run `--setup`.
 
-3. Launch orchestrator (same as inline mode step 6).
+3. Launch orchestrator:
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
+     --config ${CLAUDE_PLUGIN_ROOT}/config/arena.config.json \
+     --name <name> \
+     -p reliable-generation
+   ```
+
+4. Handle exit codes and HITL as described in Inline Mode step 6.
 
 ## HITL Handling
 

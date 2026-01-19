@@ -116,6 +116,131 @@ except ImportError as e:
 
 
 # =============================================================================
+# Goal Loading (YAML with source block support)
+# =============================================================================
+
+@dataclasses.dataclass
+class LoadedGoal:
+    """Result of loading a goal file."""
+    goal_text: str
+    source_content: str  # Resolved source material
+    source_block: Optional[SourceBlock] = None
+
+
+def load_goal(
+    run_dir: Path,
+    project_root: Path,
+    arena_home: Optional[Path] = None,
+    allow_scripts: bool = False,
+) -> Optional[LoadedGoal]:
+    """
+    Load goal from goal.yaml (preferred) or goal.md (fallback).
+
+    goal.yaml format:
+        goal: |
+          The goal text here...
+        source:
+          files: [...]
+          globs: [...]
+          scripts: [...]
+          inline: |
+            ...
+
+    goal.md format (legacy):
+        Raw markdown text (no source block support)
+
+    Returns LoadedGoal or None if no goal file exists.
+    """
+    yaml_path = run_dir / "goal.yaml"
+    md_path = run_dir / "goal.md"
+
+    # Try goal.yaml first
+    if yaml_path.exists():
+        try:
+            content = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+            if not isinstance(content, dict):
+                logger.warning(f"goal.yaml is not a valid YAML dict, treating as plain text")
+                return LoadedGoal(
+                    goal_text=yaml_path.read_text(encoding="utf-8"),
+                    source_content="",
+                )
+
+            goal_text = content.get("goal", "")
+            if not goal_text:
+                logger.error(f"goal.yaml missing 'goal' field")
+                return None
+
+            # Resolve source block if present
+            source_content = ""
+            source_block = None
+            if "source" in content and content["source"]:
+                source_block = SourceBlock.from_dict(content["source"])
+                ctx = {
+                    "project_root": project_root,
+                    "run_dir": run_dir,
+                    "constraint_dir": run_dir,  # For goal, constraint_dir = run_dir
+                }
+                if arena_home:
+                    ctx["arena_home"] = arena_home
+
+                resolved = resolve_source_block(
+                    source_block, ctx, run_dir, allow_scripts=allow_scripts
+                )
+                source_content = resolved.content
+                if resolved.warnings:
+                    for warn in resolved.warnings:
+                        logger.warning(f"Goal source: {warn}")
+
+            return LoadedGoal(
+                goal_text=goal_text.strip(),
+                source_content=source_content,
+                source_block=source_block,
+            )
+        except yaml.YAMLError as e:
+            logger.error(f"Failed to parse goal.yaml: {e}")
+            return None
+
+    # Fall back to goal.md (legacy)
+    if md_path.exists():
+        goal_text = read_text(md_path)
+        # Also check for separate source.md (legacy)
+        source_path = run_dir / "source.md"
+        source_content = read_text(source_path) if source_path.exists() else ""
+        return LoadedGoal(
+            goal_text=goal_text.strip(),
+            source_content=source_content,
+        )
+
+    return None
+
+
+def create_goal_template(run_dir: Path) -> Path:
+    """Create a template goal.yaml for user to edit."""
+    goal_path = run_dir / "goal.yaml"
+    template = """# Goal definition for Arena orchestration
+# See /arena:genloop --help for full documentation
+
+goal: |
+  Describe your objective here.
+
+  What do you want to generate or accomplish?
+
+# Optional: Source material available to the generator and critics
+# source:
+#   files:
+#     - "{{project_root}}/path/to/file.md"
+#   globs:
+#     - "{{project_root}}/docs/*.md"
+#   scripts:
+#     - git log --oneline -20
+#   inline: |
+#     Additional context here.
+"""
+    goal_path.write_text(template, encoding="utf-8")
+    return goal_path
+
+
+# =============================================================================
 # Prompt Templates for Reliable Generation
 # =============================================================================
 
@@ -806,13 +931,19 @@ async def run_multi_phase_orchestrator(
             return EXIT_HITL
 
     # Load inputs
-    goal = read_text(run_dir / "goal.md")
-    source = read_text(run_dir / "source.md")
-    constraints = load_constraints(run_dir / "constraints")
-
-    if not goal.strip():
-        logger.error(f"No goal defined in {run_dir / 'goal.md'}")
+    loaded_goal = load_goal(
+        run_dir,
+        project_root=Path.cwd(),
+        arena_home=global_dir,
+        allow_scripts=False,
+    )
+    if not loaded_goal or not loaded_goal.goal_text.strip():
+        logger.error(f"No goal defined in {run_dir / 'goal.yaml'} (or legacy goal.md)")
         return EXIT_ERROR
+
+    goal = loaded_goal.goal_text
+    source = loaded_goal.source_content
+    constraints = load_constraints(run_dir / "constraints")
 
     if not constraints:
         logger.warning("No constraints found - running without constraint enforcement")
@@ -862,8 +993,8 @@ async def run_multi_phase_orchestrator(
         write_live(f"  Adjudicator: {adjudicate_agent_name}")
         write_live("")
         write_live("INPUTS:")
-        write_live(f"  Goal:        {run_dir / 'goal.md'} {'✓' if goal.strip() else '✗ MISSING'}")
-        write_live(f"  Source:      {run_dir / 'source.md'} {'✓' if source.strip() else '(optional)'}")
+        write_live(f"  Goal:        {run_dir / 'goal.yaml'} {'✓' if goal.strip() else '✗ MISSING'}")
+        write_live(f"  Source:      (embedded in goal.yaml) {'✓' if source.strip() else '(optional)'}")
         write_live(f"  Constraints: {run_dir / 'constraints/'}")
         write_live("")
 
@@ -881,8 +1012,7 @@ async def run_multi_phase_orchestrator(
             write_live("")
             write_live("Expected structure:")
             write_live(f"  {run_dir}/")
-            write_live("  ├── goal.md              # What to generate (REQUIRED)")
-            write_live("  ├── source.md            # Source material (optional)")
+            write_live("  ├── goal.yaml            # What to generate + source (REQUIRED)")
             write_live("  └── constraints/         # Constraint files (REQUIRED)")
             write_live("      ├── safety.yaml      # Example: safety rules")
             write_live("      ├── quality.yaml     # Example: quality standards")
@@ -1324,11 +1454,12 @@ async def _run_orchestrator_locked(
         latest_link.unlink()
     latest_link.symlink_to(run_name)  # relative symlink within runs/
 
-    # Check for goal.md in run directory
-    goal_path = run_dir / "goal.md"
-    if is_new_run and not goal_path.exists():
-        # Create template goal.md for user to edit
-        goal_path.write_text("# Goal\n\nDescribe your objective here.\n", encoding="utf-8")
+    # Check for goal file in run directory (prefer goal.yaml, fallback to goal.md)
+    goal_yaml_path = run_dir / "goal.yaml"
+    goal_md_path = run_dir / "goal.md"
+    if is_new_run and not goal_yaml_path.exists() and not goal_md_path.exists():
+        # Create template goal.yaml for user to edit
+        goal_path = create_goal_template(run_dir)
         logger.info(f"Created {goal_path} - edit it and re-run")
         return EXIT_ERROR
 
@@ -1405,13 +1536,21 @@ async def _run_orchestrator_inner(
             return EXIT_HITL
 
     # Load inputs from run directory
-    goal = read_text(run_dir / "goal.md")
-    context = read_text(run_dir / "context.md")
-    summary = read_text(run_dir / "summary.md")
-
-    if not goal.strip():
-        logger.error(f"No goal defined in {run_dir / 'goal.md'}")
+    loaded_goal = load_goal(
+        run_dir,
+        project_root=Path.cwd(),
+        arena_home=global_dir,
+        allow_scripts=False,
+    )
+    if not loaded_goal or not loaded_goal.goal_text.strip():
+        logger.error(f"No goal defined in {run_dir / 'goal.yaml'} (or legacy goal.md)")
         return EXIT_ERROR
+
+    goal = loaded_goal.goal_text
+    # Merge source content from goal.yaml with context.md (if both exist)
+    context_md = read_text(run_dir / "context.md")
+    context = loaded_goal.source_content + ("\n\n" + context_md if context_md.strip() else "")
+    summary = read_text(run_dir / "summary.md")
 
     # Load mode (checks local .arena/modes/ first, then global ~/.arena/modes/)
     mode_name = args.mode or cfg.get("mode", "collaborative")

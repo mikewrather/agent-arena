@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "agent-arena",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Multi-agent orchestration plugins for Claude Code",
   "owner": {
     "name": "Mike Wrather"

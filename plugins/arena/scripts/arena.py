@@ -41,19 +41,58 @@ logging.basicConfig(
 )
 logger = logging.getLogger("arena")
 
+# Import utilities from utils module
+from utils import (
+    write_live, set_live_log, get_live_log,
+    utc_now_iso, read_text, ensure_secure_dir,
+    write_text_atomic, append_jsonl_durable,
+    load_json, save_json_atomic,
+    normalize_for_hash, sha256, text_similarity,
+    validate_name, is_subpath, resolve_path_template,
+    VALID_NAME_PATTERN,
+)
+
+# Import source resolution
+from sources import (
+    SourceBlock, ResolvedSources,
+    resolve_source_block, resolve_legacy_sources,
+)
+
+# Import data models
+from models import (
+    OrchestratorLock, Agent, Envelope,
+    ConstraintRule, Constraint,
+    CritiqueIssue, Critique,
+    AdjudicationDecision, Adjudication,
+    DEFAULT_TIMEOUT_SECONDS,
+)
+
+# Import parsers
+from parsers import (
+    parse_envelope, parse_critique, parse_adjudication,
+    validate_artifacts,
+)
+
+# Import config loading
+from config import (
+    load_constraints, compress_constraints, save_compressed_constraints,
+    load_frontmatter_doc, load_mode, load_persona, load_profile, merge_profile,
+)
+
+# Import HITL functions
+from hitl import (
+    ingest_hitl_answers, write_hitl_questions,
+    write_agent_result, write_resolution,
+)
+
 EXIT_OK = 0
 EXIT_HITL = 10
 EXIT_MAX_TURNS = 11  # Changed from 1 to be distinct from generic failure
 EXIT_ERROR = 1
 
-DEFAULT_TIMEOUT_SECONDS: Optional[int] = None  # No timeout by default
-
 # Context window settings for thread history
 DEFAULT_THREAD_HISTORY_COUNT = 10  # Number of recent messages to include
 DEFAULT_MESSAGE_TRUNCATE_LENGTH = 2000  # Characters per message (was 500)
-
-# Valid characters for mode/persona names (security: prevent path traversal)
-VALID_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 # Script location for plugin-relative paths
 # When installed as plugin: points to plugin's scripts/ dir
@@ -74,543 +113,6 @@ try:
     ROUTER_AVAILABLE = True
 except ImportError as e:
     ROUTER_IMPORT_ERROR = str(e)
-
-# Global live log file handle (set by orchestrator)
-_live_log: Optional[IO[str]] = None
-
-
-def write_live(msg: str, prefix: str = "") -> None:
-    """Write to live log file for real-time monitoring via tail -f."""
-    if _live_log:
-        ts = dt.datetime.now().strftime("%H:%M:%S")
-        line = f"[{ts}] {prefix}{msg}\n" if prefix else f"[{ts}] {msg}\n"
-        _live_log.write(line)
-        _live_log.flush()
-
-
-def utc_now_iso() -> str:
-    return dt.datetime.now(dt.timezone.utc).isoformat()
-
-
-def read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8") if path.exists() else ""
-
-
-def ensure_secure_dir(path: Path) -> None:
-    """Create directory with 0700 permissions (owner only) for security."""
-    path.mkdir(parents=True, exist_ok=True)
-    path.chmod(stat.S_IRWXU)  # 0700: rwx for owner only
-
-
-def write_text_atomic(path: Path, text: str) -> None:
-    """Atomic write: write to temp file, fsync, then rename."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-            f.flush()
-            os.fsync(f.fileno())
-        os.rename(tmp_path, path)
-    except Exception:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
-        raise
-
-
-def append_jsonl_durable(path: Path, obj: Dict[str, Any]) -> None:
-    """Append to JSONL with fsync for durability (not atomic, but durable)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    line = json.dumps(obj, ensure_ascii=False) + "\n"
-    with path.open("a", encoding="utf-8") as f:
-        f.write(line)
-        f.flush()
-        os.fsync(f.fileno())
-
-
-def load_json(path: Path, default: Any) -> Any:
-    """Load JSON from file. Returns default if file missing or invalid."""
-    if not path.exists():
-        return default
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        logger.warning(f"Invalid JSON in {path}: {e}")
-        return default
-
-
-def save_json_atomic(path: Path, obj: Any) -> None:
-    write_text_atomic(path, json.dumps(obj, indent=2, ensure_ascii=False))
-
-
-def normalize_for_hash(s: str) -> str:
-    return " ".join(s.strip().lower().split())
-
-
-def sha256(s: str) -> str:
-    return hashlib.sha256(s.encode("utf-8")).hexdigest()[:16]
-
-
-def text_similarity(a: str, b: str) -> float:
-    """Simple text similarity using SequenceMatcher (0.0-1.0)."""
-    return SequenceMatcher(None, normalize_for_hash(a), normalize_for_hash(b)).ratio()
-
-
-def validate_name(name: str, kind: str) -> None:
-    """Validate mode/persona name to prevent path traversal."""
-    if not VALID_NAME_PATTERN.match(name):
-        raise ValueError(
-            f"Invalid {kind} name '{name}': must contain only alphanumeric, underscore, or hyphen"
-        )
-
-
-def is_subpath(path: Path, parent: Path) -> bool:
-    """Check if path is within parent directory (security check)."""
-    try:
-        path.resolve().relative_to(parent.resolve())
-        return True
-    except ValueError:
-        return False
-
-
-def resolve_script_path(
-    path_template: str,
-    ctx: Dict[str, Path],
-    base_dir: Path,
-) -> Path:
-    """Resolve script path template with variable substitution and security check.
-
-    Variables supported:
-        {{run_dir}} - The run directory (.arena/runs/<name>/)
-        {{project_root}} - Project root (where .arena/ lives)
-        {{artifact}} - Path to current artifact file
-        {{source}} - Path to source.md (if exists)
-        {{constraint_dir}} - Directory containing the constraint file
-
-    Args:
-        path_template: Path string with optional {{variables}}
-        ctx: Dict mapping variable names to Path values
-        base_dir: Base directory for relative path resolution
-
-    Returns:
-        Resolved absolute Path
-
-    Raises:
-        ValueError: If resolved path escapes allowed directories
-    """
-    resolved = path_template
-    for var, value in ctx.items():
-        resolved = resolved.replace(f"{{{{{var}}}}}", str(value))
-
-    path = Path(resolved)
-    if not path.is_absolute():
-        path = base_dir / path
-    path = path.resolve()
-
-    # Security: must be within allowed directories
-    allowed = [ctx.get("run_dir"), ctx.get("project_root")]
-    allowed = [a for a in allowed if a is not None]
-
-    if not any(is_subpath(path, root) for root in allowed):
-        raise ValueError(f"Script path escapes allowed directories: {path}")
-
-    return path
-
-
-class OrchestratorLock:
-    """File-based lock to prevent concurrent orchestrator runs."""
-
-    def __init__(self, state_dir: Path):
-        self.lock_path = state_dir / "orchestrator.lock"
-        self.lock_file: Optional[IO[str]] = None
-
-    def acquire(self) -> bool:
-        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
-        self.lock_file = open(self.lock_path, "w")
-        try:
-            fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            self.lock_file.write(f"{os.getpid()}\n{utc_now_iso()}\n")
-            self.lock_file.flush()
-            return True
-        except (IOError, OSError):
-            self.lock_file.close()
-            self.lock_file = None
-            return False
-
-    def release(self) -> None:
-        if self.lock_file:
-            fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_UN)
-            self.lock_file.close()
-            self.lock_file = None
-            if self.lock_path.exists():
-                self.lock_path.unlink()
-
-
-@dataclasses.dataclass
-class Agent:
-    name: str
-    kind: str  # claude, codex, gemini
-    cmd: List[str]
-    timeout: Optional[int] = DEFAULT_TIMEOUT_SECONDS
-    suppress_stderr: bool = False  # Don't stream stderr to live log
-
-
-@dataclasses.dataclass
-class Envelope:
-    status: str  # ok, needs_human, needs_research, done, error
-    message: str
-    questions: List[Dict[str, Any]] = dataclasses.field(default_factory=list)
-    artifacts: List[Dict[str, Any]] = dataclasses.field(default_factory=list)
-    confidence: Optional[float] = None
-    objections: List[Dict[str, Any]] = dataclasses.field(default_factory=list)
-    agrees_with: List[str] = dataclasses.field(default_factory=list)
-    research_topics: List[str] = dataclasses.field(default_factory=list)
-
-    def to_dict(self) -> Dict[str, Any]:
-        d = {
-            "status": self.status,
-            "message": self.message,
-            "questions": self.questions,
-            "artifacts": self.artifacts,
-        }
-        if self.confidence is not None:
-            d["confidence"] = self.confidence
-        if self.objections:
-            d["objections"] = self.objections
-        if self.agrees_with:
-            d["agrees_with"] = self.agrees_with
-        if self.research_topics:
-            d["research_topics"] = self.research_topics
-        return d
-
-    @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "Envelope":
-        return cls(
-            status=d.get("status", "error"),
-            message=d.get("message", ""),
-            questions=d.get("questions", []),
-            artifacts=d.get("artifacts", []),
-            confidence=d.get("confidence"),
-            objections=d.get("objections", []),
-            agrees_with=d.get("agrees_with", []),
-            research_topics=d.get("research_topics", []),
-        )
-
-    @classmethod
-    def error(cls, msg: str) -> "Envelope":
-        return cls(status="error", message=msg)
-
-
-# =============================================================================
-# Reliable Generation: Constraint System
-# =============================================================================
-
-@dataclasses.dataclass
-class ConstraintRule:
-    """A single rule within a constraint."""
-    id: str
-    text: str
-    default_severity: str = "HIGH"
-    examples: Optional[Dict[str, str]] = None
-
-
-@dataclasses.dataclass
-class Constraint:
-    """A constraint file with rules for critics and summary for generator."""
-    id: str
-    priority: int
-    summary: str
-    rules: List[ConstraintRule]
-    source_path: Optional[Path] = None
-    script: Optional[str] = None  # Optional script to run before critique
-    sources: Optional[List[str]] = None  # Reference files for critic
-
-    @classmethod
-    def from_yaml(cls, path: Path) -> "Constraint":
-        """Load constraint from YAML file."""
-        content = yaml.safe_load(path.read_text(encoding="utf-8"))
-        rules = []
-        for rule_data in content.get("rules", []):
-            rules.append(ConstraintRule(
-                id=rule_data["id"],
-                text=rule_data["text"],
-                default_severity=rule_data.get("default_severity", "HIGH"),
-                examples=rule_data.get("examples"),
-            ))
-        return cls(
-            id=content.get("id", path.stem),
-            priority=content.get("priority", 10),
-            summary=content.get("summary", ""),
-            rules=rules,
-            source_path=path,
-            script=content.get("script"),
-            sources=content.get("sources"),
-        )
-
-
-@dataclasses.dataclass
-class CritiqueIssue:
-    """A single issue found by a critic."""
-    id: str
-    rule_id: str
-    severity: str
-    location: str
-    finding: str
-    evidence: str
-    suggested_fix: Optional[str] = None
-    confidence: float = 0.9
-
-
-@dataclasses.dataclass
-class Critique:
-    """Structured critique output from a critic agent."""
-    constraint_id: str
-    reviewer: str
-    iteration: int
-    overall: str  # PASS or FAIL
-    issues: List[CritiqueIssue]
-    approved_sections: List[Dict[str, str]]
-    summary: str
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "constraint_id": self.constraint_id,
-            "reviewer": self.reviewer,
-            "iteration": self.iteration,
-            "overall": self.overall,
-            "issues": [
-                {
-                    "id": i.id,
-                    "rule_id": i.rule_id,
-                    "severity": i.severity,
-                    "location": i.location,
-                    "finding": i.finding,
-                    "evidence": i.evidence,
-                    "suggested_fix": i.suggested_fix,
-                    "confidence": i.confidence,
-                }
-                for i in self.issues
-            ],
-            "approved_sections": self.approved_sections,
-            "summary": self.summary,
-        }
-
-    @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "Critique":
-        issues = []
-        for issue_data in d.get("issues", []):
-            issues.append(CritiqueIssue(
-                id=issue_data.get("id", ""),
-                rule_id=issue_data.get("rule_id", ""),
-                severity=issue_data.get("severity", "HIGH"),
-                location=issue_data.get("location", ""),
-                finding=issue_data.get("finding", ""),
-                evidence=issue_data.get("evidence", ""),
-                suggested_fix=issue_data.get("suggested_fix"),
-                confidence=issue_data.get("confidence", 0.9),
-            ))
-        return cls(
-            constraint_id=d.get("constraint_id", ""),
-            reviewer=d.get("reviewer", ""),
-            iteration=d.get("iteration", 1),
-            overall=d.get("overall", "FAIL"),
-            issues=issues,
-            approved_sections=d.get("approved_sections", []),
-            summary=d.get("summary", ""),
-        )
-
-
-@dataclasses.dataclass
-class AdjudicationDecision:
-    """A single decision in an adjudication."""
-    issue_id: str
-    constraint: str
-    severity: str
-    status: str  # pursuing, dismissed
-    flagged_by: List[str]
-    competing_constraint: Optional[str] = None
-    adjudication: Optional[str] = None
-    rationale: Optional[str] = None
-    guidance: Optional[str] = None
-
-
-@dataclasses.dataclass
-class Adjudication:
-    """Structured adjudication output."""
-    iteration: int
-    status: str  # REWRITE or APPROVED
-    tension_analysis: List[Dict[str, str]]
-    decisions: List[AdjudicationDecision]
-    bill_of_work: str
-    critical_pursuing: int = 0
-    high_pursuing: int = 0
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "iteration": self.iteration,
-            "status": self.status,
-            "tension_analysis": self.tension_analysis,
-            "decisions": [
-                {
-                    "issue_id": d.issue_id,
-                    "constraint": d.constraint,
-                    "severity": d.severity,
-                    "status": d.status,
-                    "flagged_by": d.flagged_by,
-                    "competing_constraint": d.competing_constraint,
-                    "adjudication": d.adjudication,
-                    "rationale": d.rationale,
-                    "guidance": d.guidance,
-                }
-                for d in self.decisions
-            ],
-            "termination": {
-                "critical_pursuing": self.critical_pursuing,
-                "high_pursuing": self.high_pursuing,
-            },
-            "bill_of_work": self.bill_of_work,
-        }
-
-    @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "Adjudication":
-        decisions = []
-        for dec_data in d.get("decisions", []):
-            decisions.append(AdjudicationDecision(
-                issue_id=dec_data.get("issue_id", ""),
-                constraint=dec_data.get("constraint", ""),
-                severity=dec_data.get("severity", "HIGH"),
-                status=dec_data.get("status", "pursuing"),
-                flagged_by=dec_data.get("flagged_by", []),
-                competing_constraint=dec_data.get("competing_constraint"),
-                adjudication=dec_data.get("adjudication"),
-                rationale=dec_data.get("rationale"),
-                guidance=dec_data.get("guidance"),
-            ))
-        termination = d.get("termination", {})
-        return cls(
-            iteration=d.get("iteration", 1),
-            status=d.get("status", "REWRITE"),
-            tension_analysis=d.get("tension_analysis", []),
-            decisions=decisions,
-            bill_of_work=d.get("bill_of_work", ""),
-            critical_pursuing=termination.get("critical_pursuing", 0),
-            high_pursuing=termination.get("high_pursuing", 0),
-        )
-
-
-def load_constraints(constraints_dir: Path) -> List[Constraint]:
-    """Load all constraint YAML files from a directory, sorted by priority."""
-    constraints = []
-    if not constraints_dir.exists():
-        return constraints
-
-    for yaml_file in constraints_dir.glob("*.yaml"):
-        try:
-            constraint = Constraint.from_yaml(yaml_file)
-            constraints.append(constraint)
-            logger.debug(f"Loaded constraint: {constraint.id} (priority {constraint.priority})")
-        except Exception as e:
-            logger.warning(f"Failed to load constraint {yaml_file}: {e}")
-
-    # Sort by priority (lower = higher priority)
-    constraints.sort(key=lambda c: c.priority)
-    return constraints
-
-
-def compress_constraints(constraints: List[Constraint]) -> str:
-    """Generate compressed constraint summary for generator agent."""
-    if not constraints:
-        return ""
-
-    lines = ["# Constraints Summary", ""]
-    for constraint in constraints:
-        lines.append(f"## {constraint.id.upper()} (Priority {constraint.priority})")
-        lines.append("")
-        lines.append(constraint.summary.strip())
-        lines.append("")
-
-    return "\n".join(lines)
-
-
-def save_compressed_constraints(run_dir: Path, compressed: str) -> Path:
-    """Save compressed constraints to cache directory."""
-    cache_dir = run_dir / ".cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_path = cache_dir / "constraints-compressed.md"
-    write_text_atomic(cache_path, compressed)
-    return cache_path
-
-
-def parse_critique(raw: str, agent_name: str, constraint_id: str, iteration: int) -> Critique:
-    """Parse critique JSON from agent output."""
-    raw = raw.strip()
-
-    # Try to extract JSON from markdown code blocks
-    json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
-    if json_match:
-        raw = json_match.group(1)
-
-    try:
-        obj = json.loads(raw)
-        critique = Critique.from_dict(obj)
-        critique.reviewer = agent_name
-        critique.constraint_id = constraint_id
-        critique.iteration = iteration
-        return critique
-    except json.JSONDecodeError as e:
-        logger.warning(f"Failed to parse critique JSON from {agent_name}: {e}")
-        # Return an empty critique on parse failure
-        return Critique(
-            constraint_id=constraint_id,
-            reviewer=agent_name,
-            iteration=iteration,
-            overall="ERROR",
-            issues=[],
-            approved_sections=[],
-            summary=f"Failed to parse critique: {e}",
-        )
-
-
-def parse_adjudication(raw: str, iteration: int) -> Adjudication:
-    """Parse adjudication YAML/JSON from agent output."""
-    raw = raw.strip()
-
-    # Extract content from markdown code blocks
-    # Try ```json first (most common for Claude)
-    json_block = re.search(r"```json\s*([\s\S]*?)```", raw, re.DOTALL)
-    if json_block:
-        raw = json_block.group(1).strip()
-    else:
-        # Try ```yaml
-        yaml_block = re.search(r"```yaml\s*([\s\S]*?)```", raw, re.DOTALL)
-        if yaml_block:
-            raw = yaml_block.group(1).strip()
-        else:
-            # Try bare ``` block
-            bare_block = re.search(r"```\s*([\s\S]*?)```", raw, re.DOTALL)
-            if bare_block:
-                raw = bare_block.group(1).strip()
-
-    try:
-        # Try JSON first
-        obj = json.loads(raw)
-    except json.JSONDecodeError:
-        try:
-            # Fall back to YAML
-            obj = yaml.safe_load(raw)
-        except Exception as e:
-            logger.warning(f"Failed to parse adjudication: {e}")
-            return Adjudication(
-                iteration=iteration,
-                status="ERROR",
-                tension_analysis=[],
-                decisions=[],
-                bill_of_work=f"Failed to parse adjudication: {e}",
-            )
-
-    adjudication = Adjudication.from_dict(obj)
-    adjudication.iteration = iteration
-    return adjudication
 
 
 # =============================================================================
@@ -676,6 +178,8 @@ def build_critic_prompt(
     run_dir: Optional[Path] = None,
     project_root: Optional[Path] = None,
     artifact_path: Optional[Path] = None,
+    allow_scripts: bool = False,
+    arena_home: Optional[Path] = None,
 ) -> str:
     """Build prompt for a critic phase.
 
@@ -687,6 +191,8 @@ def build_critic_prompt(
         run_dir: Run directory for script path resolution
         project_root: Project root for script path resolution
         artifact_path: Path to the artifact file (for script stdin)
+        allow_scripts: Whether to allow script execution in source blocks
+        arena_home: Global arena home directory (~/.arena/)
     """
     rules_section = []
     for rule in constraint.rules:
@@ -698,19 +204,30 @@ def build_critic_prompt(
                 rule_text += f"\nExample Compliant: {rule.examples['compliant']}"
         rules_section.append(rule_text)
 
+    # Build context for path resolution
+    ctx = {}
+    if run_dir:
+        ctx["run_dir"] = run_dir
+    if project_root:
+        ctx["project_root"] = project_root
+    if artifact_path:
+        ctx["artifact"] = artifact_path
+    if run_dir:
+        ctx["source"] = run_dir / "source.md"
+    if constraint.source_path:
+        ctx["constraint_dir"] = constraint.source_path.parent
+    elif run_dir:
+        ctx["constraint_dir"] = run_dir / "constraints"
+    if arena_home:
+        ctx["arena_home"] = arena_home
+
+    base_dir = constraint.source_path.parent if constraint.source_path else (run_dir / "constraints" if run_dir else Path.cwd())
+
     # Build script execution section if constraint has a script
     script_section = ""
     if constraint.script and run_dir and project_root and artifact_path:
         try:
-            ctx = {
-                "run_dir": run_dir,
-                "project_root": project_root,
-                "artifact": artifact_path,
-                "source": run_dir / "source.md",
-                "constraint_dir": constraint.source_path.parent if constraint.source_path else run_dir / "constraints",
-            }
-            base_dir = constraint.source_path.parent if constraint.source_path else run_dir / "constraints"
-            resolved_script = resolve_script_path(constraint.script, ctx, base_dir)
+            resolved_script = resolve_path_template(constraint.script, ctx, base_dir)
             script_section = f"""
 PRE-ANALYSIS SCRIPT
 Before your analysis, run this script to get additional validation information:
@@ -726,27 +243,41 @@ If the script reports validation errors, treat them as findings in your response
         except ValueError as e:
             logger.warning(f"Invalid script path in constraint {constraint.id}: {e}")
 
-    # Build sources section if constraint has reference sources
+    # Build sources section - NEW format (source_block) vs OLD format (sources)
     sources_section = ""
-    if constraint.sources and run_dir and project_root:
-        ctx = {
-            "run_dir": run_dir,
-            "project_root": project_root,
-            "artifact": artifact_path,
-            "source": run_dir / "source.md",
-            "constraint_dir": constraint.source_path.parent if constraint.source_path else run_dir / "constraints",
-        }
-        base_dir = constraint.source_path.parent if constraint.source_path else run_dir / "constraints"
-        resolved_sources = []
-        for source_path_template in constraint.sources:
-            try:
-                resolved = resolve_script_path(source_path_template, ctx, base_dir)
-                if resolved.exists():
-                    resolved_sources.append(resolved)
-                else:
-                    logger.warning(f"Source file not found: {resolved}")
-            except ValueError as e:
-                logger.warning(f"Invalid source path in constraint {constraint.id}: {e}")
+
+    if constraint.source_block and run_dir and project_root:
+        # NEW format: resolve source block and inject content
+        resolved = resolve_source_block(
+            source_block=constraint.source_block,
+            ctx=ctx,
+            base_dir=base_dir,
+            allow_scripts=allow_scripts,
+        )
+
+        if resolved.errors:
+            for error in resolved.errors:
+                logger.warning(f"Source resolution error in {constraint.id}: {error}")
+
+        if resolved.warnings:
+            for warning in resolved.warnings:
+                logger.info(f"Source resolution warning in {constraint.id}: {warning}")
+
+        if resolved.content.strip():
+            sources_section = f"""
+SOURCE MATERIAL
+The following source material is provided for fact-checking and context:
+
+{resolved.content}
+
+"""
+
+    elif constraint.sources and run_dir and project_root:
+        # OLD format: just list paths (backward compatibility)
+        resolved_sources, errors = resolve_legacy_sources(constraint.sources, ctx, base_dir)
+
+        for error in errors:
+            logger.warning(f"Legacy source error in {constraint.id}: {error}")
 
         if resolved_sources:
             sources_list = "\n".join(f"- {p}" for p in resolved_sources)
@@ -901,72 +432,6 @@ APPROVAL CRITERIA
 """.strip()
 
 
-def parse_envelope(raw: str, agent_kind: str) -> Tuple[Envelope, str]:
-    """Parse agent output into Envelope. Returns (envelope, error_reason)."""
-    raw = raw.strip()
-
-    # Handle Gemini's wrapper format: {"response": "...", ...}
-    if agent_kind == "gemini":
-        try:
-            outer = json.loads(raw)
-            if isinstance(outer, dict) and "response" in outer:
-                inner_raw = outer["response"]
-                if isinstance(inner_raw, str):
-                    try:
-                        inner = json.loads(inner_raw)
-                        if isinstance(inner, dict):
-                            return Envelope.from_dict(inner), ""
-                    except json.JSONDecodeError:
-                        pass
-                    # Treat response as plain message
-                    return Envelope(status="ok", message=inner_raw), ""
-                elif isinstance(inner_raw, dict):
-                    return Envelope.from_dict(inner_raw), ""
-        except json.JSONDecodeError as e:
-            return Envelope.error(f"Gemini JSON parse failed: {e}"), str(e)
-
-    # Standard JSON envelope parsing (Claude, Codex)
-    # Try to extract JSON from potential markdown code blocks
-    json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
-    if json_match:
-        raw = json_match.group(1)
-
-    try:
-        obj = json.loads(raw)
-        if isinstance(obj, dict):
-            return Envelope.from_dict(obj), ""
-        return Envelope.error("Output is not a JSON object"), "not_object"
-    except json.JSONDecodeError as e:
-        # Truncate raw output for error message
-        truncated = raw[:500] + "..." if len(raw) > 500 else raw
-        return Envelope.error(f"JSON parse error: {e}. Raw: {truncated}"), str(e)
-
-
-def validate_artifacts(env: Envelope, base_dir: Path) -> List[str]:
-    """Validate artifact paths exist and are within base_dir. Returns list of warnings."""
-    warnings = []
-    base_resolved = base_dir.resolve()
-
-    for art in env.artifacts:
-        art_path = Path(art.get("path", ""))
-        if not art_path.is_absolute():
-            art_path = base_dir / art_path
-
-        try:
-            resolved = art_path.resolve()
-            # Security: check path traversal
-            if not str(resolved).startswith(str(base_resolved)):
-                warnings.append(f"Artifact path escapes base directory: {art.get('path')}")
-                logger.warning(f"Path traversal attempt blocked: {art.get('path')}")
-                continue
-            if not resolved.exists():
-                warnings.append(f"Artifact not found: {art.get('path')}")
-        except (OSError, ValueError) as e:
-            warnings.append(f"Invalid artifact path: {art.get('path')} ({e})")
-
-    return warnings
-
-
 async def run_process(
     cmd: List[str],
     stdin_text: str,
@@ -1078,119 +543,6 @@ async def run_agent(
 
     env, err = parse_envelope(stdout, agent.kind)
     return env, stdout, stderr
-
-
-def load_frontmatter_doc(path: Path) -> Tuple[Dict[str, Any], str]:
-    """Load document with YAML frontmatter. Returns (metadata, body)."""
-    if not path.exists():
-        return {}, ""
-
-    content = read_text(path)
-    if not content.startswith("---"):
-        return {}, content
-
-    parts = content.split("---", 2)
-    if len(parts) < 3:
-        return {}, content
-
-    try:
-        import yaml
-        frontmatter = yaml.safe_load(parts[1]) or {}
-        body = parts[2].strip()
-        return frontmatter, body
-    except ImportError:
-        logger.warning("PyYAML not installed; frontmatter parsing disabled")
-        return {}, content
-    except Exception as e:
-        logger.warning(f"YAML parse error in {path}: {e}")
-        return {}, content
-
-
-def load_mode(
-    state_dir: Path, mode_name: str, global_dir: Optional[Path] = None
-) -> Tuple[Dict[str, Any], str]:
-    """Load mode document (YAML frontmatter + body). Checks state_dir first, then global_dir."""
-    validate_name(mode_name, "mode")
-    # Check local first
-    mode_path = state_dir / "modes" / f"{mode_name}.md"
-    if mode_path.exists():
-        return load_frontmatter_doc(mode_path)
-    # Fall back to global
-    if global_dir:
-        global_path = global_dir / "modes" / f"{mode_name}.md"
-        if global_path.exists():
-            return load_frontmatter_doc(global_path)
-    return {}, ""
-
-
-def load_persona(
-    state_dir: Path, persona_name: str, global_dir: Optional[Path] = None
-) -> Tuple[Dict[str, Any], str]:
-    """Load persona document (YAML frontmatter + body). Checks state_dir first, then global_dir."""
-    validate_name(persona_name, "persona")
-    # Check local first
-    persona_path = state_dir / "personas" / f"{persona_name}.md"
-    if persona_path.exists():
-        return load_frontmatter_doc(persona_path)
-    # Fall back to global
-    if global_dir:
-        global_path = global_dir / "personas" / f"{persona_name}.md"
-        if global_path.exists():
-            return load_frontmatter_doc(global_path)
-    return {}, ""
-
-
-def load_profile(
-    state_dir: Path, profile_name: str, global_dir: Optional[Path] = None
-) -> Dict[str, Any]:
-    """Load profile JSON. Checks state_dir first, then global_dir."""
-    validate_name(profile_name, "profile")
-    # Check local first
-    profile_path = state_dir / "profiles" / f"{profile_name}.json"
-    if profile_path.exists():
-        return load_json(profile_path, {})
-    # Fall back to global
-    if global_dir:
-        global_path = global_dir / "profiles" / f"{profile_name}.json"
-        if global_path.exists():
-            return load_json(global_path, {})
-    logger.warning(f"Profile '{profile_name}' not found")
-    return {}
-
-
-def merge_profile(cfg: Dict[str, Any], profile: Dict[str, Any]) -> Dict[str, Any]:
-    """Merge profile settings into config. Profile values override config."""
-    merged = cfg.copy()
-
-    # Simple overrides
-    simple_keys = [
-        "mode", "default_pattern", "order",
-        # Routing and multi-expert config
-        "routing", "expert_assignment", "expert_agent", "max_experts",
-        # Research config
-        "enable_research", "research_agent",
-        # Multi-phase config
-        "phases",
-        # Termination config
-        "termination",
-    ]
-    for key in simple_keys:
-        if key in profile:
-            merged[key] = profile[key]
-
-    # Deep merge agents
-    if "agents" in profile:
-        merged_agents = merged.get("agents", {}).copy()
-        merged_agents.update(profile["agents"])
-        merged["agents"] = merged_agents
-
-    # Deep merge personas
-    if "personas" in profile:
-        merged_personas = merged.get("personas", {}).copy()
-        merged_personas.update(profile["personas"])
-        merged["personas"] = merged_personas
-
-    return merged
 
 
 async def run_research(
@@ -1389,107 +741,6 @@ def check_consensus(envelopes: Dict[str, Envelope], min_agree: int = 2) -> bool:
             return True
 
     return False
-
-
-def ingest_hitl_answers(state_dir: Path) -> Optional[Dict[str, Any]]:
-    """Read and consume HITL answers. Returns answers or None."""
-    answers_path = state_dir / "hitl" / "answers.json"
-    if not answers_path.exists():
-        return None
-
-    answers = load_json(answers_path, None)
-    if not answers:
-        return None
-
-    # Move to processed (don't delete, keep for audit)
-    processed_path = state_dir / "hitl" / f"answers_{sha256(utc_now_iso())}.processed.json"
-    answers_path.rename(processed_path)
-
-    return answers
-
-
-def write_hitl_questions(
-    state_dir: Path, questions: List[Dict[str, Any]], turn: int
-) -> None:
-    """Write pending HITL questions and display them to user."""
-    qpath = state_dir / "hitl" / "questions.json"
-    save_json_atomic(
-        qpath,
-        {
-            "timestamp": utc_now_iso(),
-            "turn": turn,
-            "questions": questions,
-            "answer_format": {
-                "answers": [{"question_id": "q1", "answer": "your answer"}]
-            },
-        },
-    )
-
-    # Display questions prominently
-    print("\n" + "=" * 60)
-    print("HUMAN INPUT NEEDED")
-    print("=" * 60)
-    write_live("=" * 50)
-    write_live("HUMAN INPUT NEEDED")
-    write_live("=" * 50)
-
-    for agent_q in questions:
-        agent = agent_q.get("agent", "unknown")
-        agent_questions = agent_q.get("questions", [])
-        print(f"\n[{agent}] asks:")
-        write_live(f"\n[{agent}] asks:")
-
-        for i, q in enumerate(agent_questions, 1):
-            if isinstance(q, dict):
-                q_text = q.get("question", q.get("text", str(q)))
-                q_id = q.get("id", f"q{i}")
-            else:
-                q_text = str(q)
-                q_id = f"q{i}"
-            print(f"  [{q_id}] {q_text}")
-            write_live(f"  [{q_id}] {q_text}")
-
-    print(f"\nTo respond, edit: {qpath.parent / 'answers.json'}")
-    print("Format: {\"answers\": [{\"question_id\": \"q1\", \"answer\": \"your answer\"}]}")
-    print("Then re-run the orchestrator with the same --name")
-    print("=" * 60 + "\n")
-    write_live(f"\nEdit {qpath.parent / 'answers.json'} to respond")
-    write_live("=" * 50)
-
-
-def write_agent_result(
-    run_dir: Path,
-    status: str,
-    exit_code: int,
-    summary: Optional[str] = None,
-    questions: Optional[List[Dict[str, Any]]] = None,
-    error: Optional[str] = None,
-) -> None:
-    """Write agent-result.json for SubagentStop hook consumption."""
-    result = {
-        "timestamp": utc_now_iso(),
-        "run_name": run_dir.name,
-        "status": status,
-        "exit_code": exit_code,
-        "questions": questions,
-        "summary": summary,
-    }
-    if error:
-        result["error"] = error
-    save_json_atomic(run_dir / "agent-result.json", result)
-
-
-def write_resolution(state_dir: Path, reason: str, turn: int, summary: str) -> None:
-    """Write final resolution artifact."""
-    save_json_atomic(
-        state_dir / "resolution.json",
-        {
-            "timestamp": utc_now_iso(),
-            "reason": reason,
-            "final_turn": turn,
-            "summary": summary,
-        },
-    )
 
 
 # =============================================================================
@@ -1740,6 +991,9 @@ async def run_multi_phase_orchestrator(
             project_root = state_dir.parent
             artifact_path = iter_dir / "artifact.md"
 
+            # Get arena_home for source resolution
+            arena_home = global_dir if global_dir else Path.home() / ".arena"
+
             for constraint in constraints:
                 for agent_name in critique_agents:
                     agent = agents[agent_name]
@@ -1751,6 +1005,8 @@ async def run_multi_phase_orchestrator(
                         run_dir=run_dir,
                         project_root=project_root,
                         artifact_path=artifact_path,
+                        allow_scripts=args.allow_scripts if hasattr(args, 'allow_scripts') else False,
+                        arena_home=arena_home,
                     )
 
                     write_text_atomic(
@@ -2050,8 +1306,6 @@ async def _run_orchestrator_locked(
     global_dir: Optional[Path],
 ) -> int:
     """Orchestrator logic (with lock held)."""
-    global _live_log
-
     ensure_secure_dir(state_dir)
 
     # Create or use named run directory
@@ -2080,7 +1334,8 @@ async def _run_orchestrator_locked(
 
     # Open live log in run directory (append if resuming)
     live_log_path = run_dir / "live.log"
-    _live_log = open(live_log_path, "a", encoding="utf-8")
+    live_log_file = open(live_log_path, "a", encoding="utf-8")
+    set_live_log(live_log_file)
 
     # Create/update symlink in state_dir root for easy access
     live_link = state_dir / "live.log"
@@ -2099,8 +1354,8 @@ async def _run_orchestrator_locked(
         write_live("=" * 60)
         write_live("ORCHESTRATOR FINISHED")
         write_live("=" * 60)
-        _live_log.close()
-        _live_log = None
+        live_log_file.close()
+        set_live_log(None)
 
 
 async def _run_orchestrator_inner(
@@ -2808,6 +2063,10 @@ def main() -> int:
     ap.add_argument(
         "--dry-run", action="store_true",
         help="Preview constraint routing without executing (multi-phase only)"
+    )
+    ap.add_argument(
+        "--allow-scripts", action="store_true",
+        help="Allow script execution in source blocks (security: disabled by default)"
     )
     ap.add_argument(
         "--template-info", action="store_true",

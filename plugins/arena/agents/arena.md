@@ -37,15 +37,11 @@ Extract from the prompt:
 
 ### Step 2: Determine Plugin Root
 
-The plugin scripts are located at `${CLAUDE_PLUGIN_ROOT}` or can be found at:
-```
-~/.claude/plugins/cache/agent-arena/arena/*/scripts/arena.py
-```
+The plugin scripts are located at `${CLAUDE_PLUGIN_ROOT}`:
+- Scripts: `${CLAUDE_PLUGIN_ROOT}/scripts/arena.py`
+- Config: `${CLAUDE_PLUGIN_ROOT}/config/arena.config.json`
 
-Use Glob to find the actual path:
-```bash
-ls ~/.claude/plugins/cache/agent-arena/arena/*/scripts/arena.py
-```
+**Note:** `${CLAUDE_PLUGIN_ROOT}` is automatically set by Claude Code when running plugin scripts. Use it directly in Bash commands.
 
 ### Step 3: Initialize Run
 
@@ -86,8 +82,8 @@ ls ~/.claude/plugins/cache/agent-arena/arena/*/scripts/arena.py
 Run the arena.py script:
 
 ```bash
-python3 <plugin-root>/scripts/arena.py \
-  --config <plugin-root>/config/arena.config.json \
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
+  --config ${CLAUDE_PLUGIN_ROOT}/config/arena.config.json \
   --name <run-name> \
   -p <profile>
 ```

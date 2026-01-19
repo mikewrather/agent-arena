@@ -61,13 +61,13 @@ Tell the user:
 
 ## What Happens Next
 
-The SubagentStop hook automatically handles:
-- **Waking you** when the agent completes
-- **Prompting for HITL answers** if agents need human input
-- **Re-launching the agent** to continue after you answer
-- **Presenting final results** when orchestration completes
+The plugin's **SubagentStop hook** (`hooks/hooks.json`) automatically:
+- **Detects completion** by reading `.arena/runs/latest/agent-result.json`
+- **Shows HITL questions** if agents need human input (exit code 10)
+- **Summarizes results** when orchestration completes
+- **Reports errors** with actionable recovery steps
 
-You don't need to poll or check manually - the hook system takes care of the HITL loop.
+The hook runs `scripts/hitl-handler.sh` which parses the result and outputs status to Claude.
 
 ## Manual Check (Optional)
 

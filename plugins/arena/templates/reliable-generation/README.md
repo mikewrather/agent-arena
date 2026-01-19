@@ -181,6 +181,18 @@ summary: |
   This text is shown to the generator agent.
   Keep it concise but complete.
 
+# Optional: Source material for critics evaluating this constraint
+# source:
+#   files:
+#     - "{{project_root}}/docs/guidelines.md"
+#     - "{{constraint_dir}}/examples/good.md"
+#   globs:
+#     - "{{project_root}}/src/**/*.ts"
+#   scripts:
+#     - grep -n "TODO" {{project_root}}/src/
+#   inline: |
+#     Additional context for critics.
+
 rules:
   - id: rule-identifier     # Unique within this constraint
     text: |

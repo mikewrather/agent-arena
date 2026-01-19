@@ -111,6 +111,8 @@ source:
 | `{{run_dir}}` | Run directory (`.arena/runs/<name>/`) |
 | `{{constraint_dir}}` | Directory containing the constraint YAML file |
 | `{{arena_home}}` | Global arena home (`~/.arena/`) - read-only |
+| `{{artifact}}` | Path to current artifact (constraints only, during critique) |
+| `{{source}}` | Path to source.md in run dir (legacy, prefer goal.yaml source block) |
 
 Path variables are resolved in `files`, `globs`, and `scripts` before execution. They are NOT expanded in `inline` text.
 
@@ -490,6 +492,8 @@ Primary mode for agent/programmatic callers.
       - {{run_dir}} → .arena/runs/<name>/
       - {{constraint_dir}} → directory containing the constraint YAML
       - {{arena_home}} → ~/.arena/ (read-only)
+      - {{artifact}} → current artifact path (constraints only, during critique)
+      - {{source}} → source.md path (legacy, prefer goal.yaml source block)
 
    2. Process each source type:
       - files: Read each resolved path, concatenate with headers

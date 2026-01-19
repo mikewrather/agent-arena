@@ -336,8 +336,7 @@ rules:
 **Directory Structure:**
 ```
 .arena/runs/<name>/
-├── goal.md                      # What to generate (required)
-├── source.md                    # Source material (optional)
+├── goal.yaml                    # What to generate + source (required)
 ├── constraints/                 # User-authored constraint files
 │   ├── safety.yaml
 │   ├── tone.yaml
@@ -363,7 +362,7 @@ rules:
 python3 ~/.arena/arena.py --name story-gen -p reliable-generation
 
 # Edit goal and add constraints
-vim .arena/runs/story-gen/goal.md
+vim .arena/runs/story-gen/goal.yaml
 vim .arena/runs/story-gen/constraints/safety.yaml
 
 # Preview constraint routing without executing

@@ -563,7 +563,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
 ### Phase 6: Run Mode (`--run`)
 
 1. Validate:
-   - `.arena/runs/<name>/goal.md` exists and has content
+   - `.arena/runs/<name>/goal.yaml` (or legacy `goal.md`) exists and has content
    - `.arena/runs/<name>/constraints/` has at least one `.yaml` file
 
 2. If missing, offer to run `--setup`.

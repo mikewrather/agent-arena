@@ -1,0 +1,29 @@
+# Goal definition for reliable generation
+# This file defines what to generate and provides source material
+
+goal: |
+  [Describe what you want to generate - be specific about the desired output]
+
+  ## Requirements
+
+  1. [Primary requirement]
+  2. [Secondary requirement]
+  3. [Additional requirements]
+
+  ## Output Format
+
+  [Describe the expected format of the generated artifact]
+
+  ## Success Criteria
+
+  - [What makes the output acceptable?]
+  - [What are the non-negotiable requirements?]
+
+# Optional: Source material for the generator
+# source:
+#   files:
+#     - "{{project_root}}/path/to/reference.md"
+#   globs:
+#     - "{{project_root}}/examples/*.md"
+#   inline: |
+#     Additional context or examples here.

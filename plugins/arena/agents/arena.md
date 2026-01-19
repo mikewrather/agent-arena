@@ -53,20 +53,23 @@ The plugin scripts are located at `${CLAUDE_PLUGIN_ROOT}`:
    name = re.sub(r'[^a-z0-9]+', '-', goal.lower()[:30]).strip('-')
    ```
 
-2. Create run directory and goal.md:
+2. Create run directory and goal.yaml:
    ```bash
    mkdir -p .arena/runs/<run-name>
    ```
 
-3. Write goal.md:
-   ```markdown
-   # Goal
+3. Write goal.yaml:
+   ```yaml
+   goal: |
+     <goal from prompt>
 
-   <goal from prompt>
+     ## Focus Areas
+     <extract key focus areas from goal>
 
-   ## Focus Areas
-
-   <extract key focus areas from goal>
+   # Optional source material
+   # source:
+   #   files:
+   #     - "{{project_root}}/path/to/file"
    ```
 
 **For resuming:**

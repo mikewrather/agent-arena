@@ -11,7 +11,7 @@ python3 ~/.arena/arena.py --name my-generation -p reliable-generation
 # 2. Copy template files to your run
 cp -r ~/.arena/templates/reliable-generation/* .arena/runs/my-generation/
 
-# 3. Edit goal.md and constraints, then run
+# 3. Edit goal.yaml and constraints, then run
 python3 ~/.arena/arena.py --name my-generation -p reliable-generation
 ```
 
@@ -21,8 +21,7 @@ python3 ~/.arena/arena.py --name my-generation -p reliable-generation
 
 ```
 .arena/runs/<name>/
-├── goal.md                      # REQUIRED: What to generate
-├── source.md                    # OPTIONAL: Source material/context
+├── goal.yaml                    # REQUIRED: What to generate + source
 ├── adjudication-config.yaml     # OPTIONAL: Adjudication rules
 ├── constraints/                 # REQUIRED: At least one constraint file
 │   ├── safety.yaml              # Example: safety rules
@@ -46,60 +45,56 @@ python3 ~/.arena/arena.py --name my-generation -p reliable-generation
 
 ## Input Files
 
-### goal.md (REQUIRED)
+### goal.yaml (REQUIRED)
 
-Describes what you want to generate. Be specific about:
+Describes what you want to generate and optionally includes source material. Be specific about:
 - The type of output (story, documentation, code, etc.)
 - Requirements and acceptance criteria
 - Target audience
 - Desired format and length
 
 **Example:**
-```markdown
-# Goal
+```yaml
+goal: |
+  Generate a bedtime story for children ages 4-6.
 
-Generate a bedtime story for children ages 4-6.
+  ## Requirements
 
-## Requirements
+  1. Story should be 500-800 words
+  2. Feature a friendly animal protagonist
+  3. Include a gentle moral lesson about sharing
+  4. End with the character falling asleep peacefully
 
-1. Story should be 500-800 words
-2. Feature a friendly animal protagonist
-3. Include a gentle moral lesson about sharing
-4. End with the character falling asleep peacefully
+  ## Output Format
 
-## Output Format
+  Single narrative in prose form, suitable for reading aloud.
 
-Single narrative in prose form, suitable for reading aloud.
+  ## Success Criteria
 
-## Success Criteria
+  - Engaging opening that captures attention
+  - Age-appropriate vocabulary
+  - Positive resolution
+  - Calming ending suitable for bedtime
 
-- Engaging opening that captures attention
-- Age-appropriate vocabulary
-- Positive resolution
-- Calming ending suitable for bedtime
+# Optional source material (embedded in goal.yaml)
+source:
+  inline: |
+    ## Character Background
+    The protagonist is "Ollie the Owl" - a curious young owl who lives
+    in a cozy tree hollow with his family.
+
+    ## Setting
+    A peaceful forest at dusk, with fireflies and gentle sounds.
+
+    ## Style Reference
+    Similar tone to "Goodnight Moon" - repetitive, soothing, rhythmic.
 ```
 
-### source.md (OPTIONAL)
-
-Provides source material, context, or examples for the generator to work with.
-
-**Example:**
-```markdown
-# Source Material
-
-## Character Background
-
-The protagonist is "Ollie the Owl" - a curious young owl who lives
-in a cozy tree hollow with his family.
-
-## Setting
-
-A peaceful forest at dusk, with fireflies and gentle sounds.
-
-## Style Reference
-
-Similar tone to "Goodnight Moon" - repetitive, soothing, rhythmic.
-```
+**Source block options:**
+- `inline:` - Inline text content
+- `files:` - List of file paths (supports `{{project_root}}`, `{{run_dir}}`)
+- `globs:` - List of glob patterns to match files
+- `scripts:` - List of shell commands to execute
 
 ### adjudication-config.yaml (OPTIONAL)
 

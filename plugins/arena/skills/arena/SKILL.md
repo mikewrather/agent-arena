@@ -52,7 +52,7 @@ tail -f .arena/runs/my-review/live.log
 ## Output Location
 
 All run artifacts are in `.arena/runs/<run-name>/`:
-- `goal.md` - The objective
+- `goal.yaml` - The objective (or legacy `goal.md`)
 - `thread.jsonl` - Full conversation
 - `resolution.json` - Why it stopped
 - `live.log` - Real-time streaming output

@@ -31,18 +31,18 @@ When called without arguments or with `--help`, return comprehensive documentati
 ## Quick Start
 
 ```
-/arena:genloop my-story \
-  --goal "Generate a bedtime story for ages 4-6 about sharing" \
-  --constraint "safety: No unresolved fear, age-appropriate" \
-  --constraint "quality: Complete narrative arc"
+/arena:genloop release-notes \
+  --goal "Generate release notes for v2.4.0 from the git log" \
+  --constraint "accuracy: All features and fixes must match actual commits" \
+  --constraint "completeness: Include breaking changes, new features, bug fixes, and deprecations"
 ```
 
 With custom adjudication (optional):
 ```
-/arena:genloop my-story \
-  --goal "Generate a bedtime story for ages 4-6 about sharing" \
-  --constraint "safety: No unresolved fear, age-appropriate" \
-  --constraint "quality: Complete narrative arc" \
+/arena:genloop release-notes \
+  --goal "Generate release notes for v2.4.0 from the git log" \
+  --constraint "accuracy: All features and fixes must match actual commits" \
+  --constraint "completeness: Include breaking changes, new features, bug fixes, and deprecations" \
   --adjudication "approve_when: no_critical"
 ```
 
@@ -51,17 +51,67 @@ With custom adjudication (optional):
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `<name>` | Yes | Run name (creates `.arena/runs/<name>/`) |
-| `--goal "text"` | Yes* | What to generate |
+| `--goal "text"` | Yes* | What to generate (simple inline goal) |
+| `--goal-yaml "yaml"` | No | Full YAML goal with source definitions |
 | `--constraint "id: summary"` | Yes* | Simple constraint (repeatable) |
 | `--constraint-yaml "yaml"` | No | Full YAML constraint (repeatable) |
 | `--adjudication "key: value"` | No | Override default adjudication behavior |
 | `--adjudication-yaml "yaml"` | No | Full YAML adjudication config |
-| `--source "text"` | No | Source material/context |
 | `--max-iterations N` | No | Override max iterations (default: 3) |
 
 *Required for inline mode. For file-based mode, use `--setup` then `--run`.
 
 **Note:** Adjudication config is optional. The adjudicator infers appropriate behavior from constraints.
+
+## Goal Format
+
+### Simple (--goal)
+
+```
+--goal "Generate release notes for v2.4.0"
+```
+
+Creates a basic goal. Source material can be defined in constraints or via `--goal-yaml`.
+
+### Full YAML (--goal-yaml)
+
+```yaml
+goal: |
+  Generate release notes for v2.4.0 covering all changes since v2.3.0.
+  Format as markdown with sections for Breaking Changes, Features, Fixes, and Deprecations.
+
+# Source material available to the generator
+source:
+  files:                      # Files to include (path variables supported)
+    - ${PROJECT_ROOT}/CHANGELOG.md
+    - ${PROJECT_ROOT}/package.json
+    - ${RUN_DIR}/additional-context.md
+  globs:                      # Glob patterns (path variables supported)
+    - ${PROJECT_ROOT}/docs/migration/*.md
+    - ${RUN_DIR}/references/*.md
+  scripts:                    # Shell commands (path variables supported, run from PROJECT_ROOT)
+    - git log v2.3.0..HEAD --oneline
+    - cat ${RUN_DIR}/version-info.txt
+    - grep -r "TODO" ${PROJECT_ROOT}/src/
+  inline: |                   # Literal text (no variable expansion)
+    Version 2.4.0 focuses on performance improvements and API stability.
+```
+
+### Path Variables
+
+| Variable | Resolves To |
+|----------|-------------|
+| `${PROJECT_ROOT}` | Project root (directory containing `.arena/`) |
+| `${RUN_DIR}` | Run directory (`.arena/runs/<name>/`) |
+| `${CONSTRAINTS_DIR}` | Constraints directory (`.arena/runs/<name>/constraints/`) |
+| `${ARENA_HOME}` | Global arena home (`~/.arena/`) |
+
+Path variables are resolved in `files`, `globs`, and `scripts` before execution. They are NOT expanded in `inline` text.
+
+**Source resolution:** Files and script outputs are concatenated and made available to:
+1. The **generator** agent during artifact creation
+2. The **critic** agents for fact-checking against source material
+3. The **adjudicator** for resolving disputes about accuracy
 
 ## Constraint Format
 
@@ -82,6 +132,20 @@ priority: 1                   # Lower = higher priority (1-10)
 summary: |
   Brief description shown to the generator agent.
   Keep concise but complete.
+
+# Source material for this constraint (optional)
+source:
+  files:                      # Files to include (path variables supported)
+    - ${PROJECT_ROOT}/src/routes/users.ts
+    - ${PROJECT_ROOT}/src/models/user.ts
+  globs:                      # Glob patterns (path variables supported)
+    - ${PROJECT_ROOT}/src/validators/*.ts
+    - ${ARENA_HOME}/shared-schemas/*.yaml
+  scripts:                    # Shell commands (path variables supported)
+    - grep -n "router\." ${PROJECT_ROOT}/src/routes/users.ts
+    - cat ${RUN_DIR}/api-spec.json
+  inline: |                   # Literal text (no variable expansion)
+    Additional context that doesn't come from files.
 
 rules:
   - id: no-harmful-content    # Unique within constraint
@@ -176,14 +240,15 @@ instructions: |
 
 ## Examples
 
-### Story Generation
+### Release Notes
 
 ```
-/arena:genloop bedtime-story \
-  --goal "Generate a 500-word bedtime story about a bunny learning to share" \
-  --constraint "safety: No unresolved fear, violence, or harmful content" \
-  --constraint "quality: Complete narrative arc with beginning, middle, end" \
-  --constraint "tone: Warm, soothing, suitable for ages 4-6" \
+/arena:genloop release-notes \
+  --goal "Generate release notes for v2.4.0 covering commits since v2.3.0" \
+  --source "Run: git log v2.3.0..HEAD --oneline" \
+  --constraint "accuracy: Every item must correspond to an actual commit" \
+  --constraint "completeness: Categorize into Breaking Changes, Features, Fixes, Deprecations" \
+  --constraint "tone: Professional, concise, user-focused (not implementation details)" \
   --adjudication "approve_when: no_critical_or_high"
 ```
 
@@ -191,24 +256,41 @@ instructions: |
 
 ```
 /arena:genloop api-docs \
-  --goal "Generate REST API documentation for the /users endpoint" \
-  --source "See src/routes/users.ts for implementation" \
+  --goal-yaml "
+goal: |
+  Generate REST API documentation for the /users endpoint.
+  Include authentication requirements, request/response examples, and error handling.
+source:
+  files:
+    - \${PROJECT_ROOT}/src/routes/users.ts
+    - \${PROJECT_ROOT}/src/models/user.ts
+  globs:
+    - \${PROJECT_ROOT}/src/middleware/auth*.ts
+" \
   --constraint-yaml "
 id: accuracy
 priority: 1
 summary: All code examples must be correct and runnable
+source:
+  files:
+    - \${PROJECT_ROOT}/src/routes/users.ts
+  scripts:
+    - grep -n 'router\\.' \${PROJECT_ROOT}/src/routes/users.ts
 rules:
   - id: valid-syntax
     text: Code examples must have valid syntax for the specified language
     default_severity: CRITICAL
   - id: correct-endpoints
-    text: HTTP methods and paths must match the actual API
+    text: HTTP methods and paths must match the actual API implementation
     default_severity: CRITICAL
 " \
   --constraint-yaml "
 id: completeness
 priority: 2
 summary: Document all parameters, responses, and error codes
+source:
+  scripts:
+    - grep -E 'res\\.status\\([0-9]+\\)' \${PROJECT_ROOT}/src/routes/users.ts
 rules:
   - id: all-params
     text: Every parameter must include type, description, and required status
@@ -246,12 +328,16 @@ instructions: |
 
 ```
 .arena/runs/<name>/
-├── goal.md                      # Generation goal
-├── source.md                    # Source material (if provided)
-├── adjudication-config.yaml     # Adjudication rules
+├── goal.yaml                    # Generation goal with source definitions
+├── adjudication-config.yaml     # Adjudication rules (optional)
 ├── constraints/                 # Constraint files
-│   ├── safety.yaml
-│   └── quality.yaml
+│   ├── accuracy.yaml
+│   └── completeness.yaml
+├── source-cache/                # Resolved source material (generated)
+│   ├── goal-sources.md          # Concatenated sources from goal.yaml
+│   └── constraint-sources/      # Per-constraint source material
+│       ├── accuracy.md
+│       └── completeness.md
 ├── iterations/                  # Per-iteration outputs
 │   └── 1/
 │       ├── artifact.md          # Generated content
@@ -265,16 +351,27 @@ instructions: |
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
+│                    SETUP (once)                             │
+├─────────────────────────────────────────────────────────────┤
+│  0. RESOLVE SOURCES                                         │
+│     └── Parse source blocks from goal.yaml + constraints    │
+│         ├── Resolve path variables (${PROJECT_ROOT}, etc.)  │
+│         ├── Read files, expand globs                        │
+│         ├── Execute scripts, capture stdout                 │
+│         └── Write to source-cache/ for agent access         │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
 │                    ITERATION LOOP                           │
 ├─────────────────────────────────────────────────────────────┤
 │  1. GENERATE                                                │
-│     └── Claude reads goal + constraints summary             │
+│     └── Claude reads goal + constraints + source-cache/     │
 │         └── Produces artifact.md                            │
 │                                                             │
 │  2. CRITIQUE (parallel, all-to-all)                         │
-│     ├── Claude reviews ALL constraints                      │
-│     ├── Codex reviews ALL constraints                       │
-│     └── Gemini reviews ALL constraints                      │
+│     ├── Claude reviews ALL constraints + their sources      │
+│     ├── Codex reviews ALL constraints + their sources       │
+│     └── Gemini reviews ALL constraints + their sources      │
 │         └── Each produces structured critique JSON          │
 │                                                             │
 │  3. ADJUDICATE                                              │
@@ -299,6 +396,10 @@ tail -f .arena/runs/<name>/live.log
 # Check current iteration
 cat .arena/runs/<name>/state.json
 
+# View resolved source material
+cat .arena/runs/<name>/source-cache/goal-sources.md
+ls .arena/runs/<name>/source-cache/constraint-sources/
+
 # View latest critique
 cat .arena/runs/<name>/iterations/*/critiques/*.json
 
@@ -315,20 +416,25 @@ Primary mode for agent/programmatic callers.
 
 1. **Create run directory:**
    ```bash
-   mkdir -p .arena/runs/<name>/constraints
+   mkdir -p .arena/runs/<name>/constraints .arena/runs/<name>/source-cache/constraint-sources
    ```
 
-2. **Write goal.md:**
-   ```
-   Write(".arena/runs/<name>/goal.md", "# Goal\n\n<goal_text>")
+2. **Write goal.yaml:**
+
+   For `--goal "text"` (simple):
+   ```yaml
+   # .arena/runs/<name>/goal.yaml
+   goal: |
+     <goal_text>
    ```
 
-3. **Write source.md (if `--source` provided):**
+   For `--goal-yaml` (full):
    ```
-   Write(".arena/runs/<name>/source.md", "# Source Material\n\n<source_text>")
+   # Parse YAML and write directly
+   Write(".arena/runs/<name>/goal.yaml", <yaml_content>)
    ```
 
-4. **Write constraint files:**
+3. **Write constraint files:**
 
    For `--constraint "id: summary"`:
    ```yaml
@@ -349,7 +455,7 @@ Primary mode for agent/programmatic callers.
    Write(".arena/runs/<name>/constraints/<id>.yaml", <yaml_content>)
    ```
 
-5. **Write adjudication config (if provided):**
+4. **Write adjudication config (if provided):**
 
    **Skip this step if no adjudication args provided** - the adjudicator will use sensible defaults and infer behavior from constraints.
 
@@ -366,6 +472,28 @@ Primary mode for agent/programmatic callers.
    For `--adjudication-yaml`:
    ```
    Write(".arena/runs/<name>/adjudication-config.yaml", <yaml_content>)
+   ```
+
+5. **Resolve source material:**
+
+   Process `source` blocks from goal.yaml and all constraint files:
+   ```
+   1. For each YAML file with a `source` block, resolve path variables
+      in files, globs, and scripts:
+      - ${PROJECT_ROOT} → directory containing .arena/
+      - ${RUN_DIR} → .arena/runs/<name>/
+      - ${CONSTRAINTS_DIR} → .arena/runs/<name>/constraints/
+      - ${ARENA_HOME} → ~/.arena/
+
+   2. Process each source type:
+      - files: Read each resolved path, concatenate with headers
+      - globs: Expand resolved patterns, read matching files
+      - scripts: Execute resolved commands from PROJECT_ROOT, capture stdout
+      - inline: Include literal text (no variable expansion)
+
+   3. Write resolved content:
+      - Goal sources → .arena/runs/<name>/source-cache/goal-sources.md
+      - Constraint sources → .arena/runs/<name>/source-cache/constraint-sources/<id>.md
    ```
 
 6. **Launch orchestrator:**

@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import stat
 import sys
 import tempfile
@@ -295,6 +296,81 @@ The output should be the complete, final text ready for critique.
 """.strip()
 
 
+def build_refinement_prompt(
+    artifact_path: Path,
+    adjudication: Adjudication,
+    goal: str,
+    iteration: int,
+) -> str:
+    """Build prompt for refinement phase using file-based editing.
+
+    Instead of embedding the full artifact in the prompt and asking for
+    regeneration, this prompt instructs the generator to use the Edit tool
+    to make surgical modifications to the artifact file.
+    """
+    return f"""\
+REFINEMENT TASK
+You are refining an artifact based on adjudicator feedback.
+Iteration: {iteration}
+
+GOAL (for context)
+{goal.strip()}
+
+ARTIFACT LOCATION
+The artifact to edit is at: {artifact_path}
+
+BILL OF WORK
+{adjudication.bill_of_work}
+
+INSTRUCTIONS
+1. Read the artifact file using the Read tool
+2. For EACH issue in the bill of work:
+   - Use the Edit tool to make the EXACT change specified
+   - Use literal text, not semantic equivalents (use exact field names as written)
+   - Match the find/replace patterns precisely
+3. Do NOT add content beyond what is specified
+4. Do NOT restructure or rewrite sections not mentioned in the bill of work
+5. When done, output "REFINEMENT COMPLETE"
+
+CRITICAL RULES
+- Use the Edit tool to modify the file - do NOT output the full artifact text
+- Make one edit at a time for each issue in the bill of work
+- Preserve surrounding content exactly as-is
+- Do not "improve" or "clean up" content not mentioned in the bill of work
+""".strip()
+
+
+def validate_artifact_changed(
+    prev_artifact_path: Path,
+    curr_artifact_path: Path,
+    max_size_change_pct: float = 20.0,
+) -> Tuple[bool, str]:
+    """Check if the artifact was actually modified.
+
+    Returns:
+        Tuple of (changed: bool, reason: str)
+    """
+    if not prev_artifact_path.exists():
+        return True, "No previous artifact to compare"
+
+    prev_content = prev_artifact_path.read_text(encoding="utf-8")
+    curr_content = curr_artifact_path.read_text(encoding="utf-8")
+
+    if prev_content == curr_content:
+        return False, "Artifact unchanged - generator made no edits"
+
+    # Check if word count changed significantly (indicates regeneration vs editing)
+    prev_words = len(prev_content.split())
+    curr_words = len(curr_content.split())
+
+    if prev_words > 0:
+        pct_change = abs(curr_words - prev_words) / prev_words * 100
+        if pct_change > max_size_change_pct:
+            return False, f"Artifact size changed significantly ({prev_words} → {curr_words} words, {pct_change:.1f}% change) - possible regeneration"
+
+    return True, "Artifact modified"
+
+
 def build_critic_prompt(
     constraint: Constraint,
     artifact: str,
@@ -508,13 +584,49 @@ CRITIQUES FROM ALL REVIEWERS
 YOUR ROLE
 1. Analyze tensions between competing constraints
 2. Decide which issues to pursue vs dismiss
-3. Create a prioritized bill of work for the generator
+3. Create a precise, surgical bill of work for the generator
 
 DECISION CRITERIA
 - CRITICAL issues: Must be fixed (safety, security, legal)
 - HIGH issues: Should be fixed unless they conflict with higher-priority constraints
 - MEDIUM/LOW issues: Fix if easy, dismiss if they conflict or are stylistic
 - When constraints conflict: Higher priority wins, but find the boundary that satisfies both maximally
+
+BILL OF WORK FORMAT
+The bill_of_work must use SURGICAL EDIT instructions that the generator can apply directly.
+Use these exact formats:
+
+For REPLACEMENTS (changing existing text):
+```
+### Issue: issue-id (SEVERITY)
+**Action:** Replace
+**Find:** `exact text to find in artifact`
+**Replace:** `exact replacement text`
+```
+
+For INSERTIONS (adding new content):
+```
+### Issue: issue-id (SEVERITY)
+**Action:** Insert after
+**Anchor:** `exact text after which to insert`
+**Insert:**
+```
+content to insert
+```
+```
+
+For DELETIONS (removing content):
+```
+### Issue: issue-id (SEVERITY)
+**Action:** Delete
+**Find:** `exact text to delete`
+```
+
+CRITICAL RULES FOR BILL OF WORK:
+- Use LITERAL text from the artifact, not paraphrased versions
+- Use EXACT field names and identifiers (not semantic equivalents)
+- Include enough context in "Find" to make matches unique
+- Keep edits minimal and surgical - don't rewrite entire sections
 
 OUTPUT REQUIREMENTS
 Respond with a SINGLE JSON object:
@@ -546,7 +658,7 @@ Respond with a SINGLE JSON object:
     "critical_pursuing": 0,
     "high_pursuing": 0
   }},
-  "bill_of_work": "## MUST FIX (CRITICAL)\\n1. issue-id: guidance\\n\\n## SHOULD FIX (HIGH)\\n..."
+  "bill_of_work": "Use surgical edit format as specified above"
 }}
 
 APPROVAL CRITERIA
@@ -955,12 +1067,19 @@ async def run_multi_phase_orchestrator(
         save_compressed_constraints(run_dir, compressed)
 
     # Configuration
-    max_iterations = phases_config.get("refine", {}).get("max_iterations", 3)
+    refine_config = phases_config.get("refine", {})
+    max_iterations = refine_config.get("max_iterations", 3)
     if args.max_iterations:
         max_iterations = args.max_iterations
 
+    # Refine mode: "edit" (file-based, surgical edits) or "regenerate" (legacy, full regeneration)
+    refine_mode = refine_config.get("mode", "edit")
+    validation_retries = refine_config.get("validation_retries", 2)
+    max_size_change_pct = refine_config.get("max_size_change_pct", 20.0)
+
     termination_config = phases_config.get("termination", {})
     approve_when = termination_config.get("approve_when", "no_critical_and_no_high")
+    thrash_threshold = termination_config.get("thrash_threshold", 2)  # Escalate after N occurrences
 
     # Agent configuration
     generate_agent_name = phases_config.get("generate", {}).get("agent", "claude")
@@ -1046,20 +1165,41 @@ async def run_multi_phase_orchestrator(
         iter_dir = run_dir / "iterations" / str(iteration)
         iter_dir.mkdir(parents=True, exist_ok=True)
 
-        # Phase: Generate
+        # Phase: Generate (or Refine for iteration > 1)
         if current_phase == "generate":
-            write_live("")
-            write_live(f"▶ PHASE: Generation (iteration {iteration})")
-            write_live(f"  {generate_agent_name} → generating draft...")
+            is_refinement = iteration > 1 and adjudication is not None
+            curr_artifact_path = iter_dir / "artifact.md"
 
-            prompt = build_generator_prompt(
-                goal=goal,
-                source=source,
-                compressed_constraints=compressed,
-                previous_artifact=artifact,
-                previous_adjudication=adjudication,
-                iteration=iteration,
-            )
+            if is_refinement and refine_mode == "edit":
+                # File-based refinement: copy previous artifact and use Edit-based prompt
+                write_live("")
+                write_live(f"▶ PHASE: Refinement (iteration {iteration})")
+                write_live(f"  {generate_agent_name} → applying surgical edits...")
+
+                # Copy previous artifact to current iteration dir
+                prev_artifact_path = run_dir / "iterations" / str(iteration - 1) / "artifact.md"
+                shutil.copy(prev_artifact_path, curr_artifact_path)
+
+                prompt = build_refinement_prompt(
+                    artifact_path=curr_artifact_path,
+                    adjudication=adjudication,
+                    goal=goal,
+                    iteration=iteration,
+                )
+            else:
+                # Initial generation or legacy regenerate mode
+                write_live("")
+                write_live(f"▶ PHASE: Generation (iteration {iteration})")
+                write_live(f"  {generate_agent_name} → generating draft...")
+
+                prompt = build_generator_prompt(
+                    goal=goal,
+                    source=source,
+                    compressed_constraints=compressed,
+                    previous_artifact=artifact,
+                    previous_adjudication=adjudication,
+                    iteration=iteration,
+                )
 
             # Save prompt
             write_text_atomic(iter_dir / f"prompt_generate_{generate_agent_name}.txt", prompt)
@@ -1076,11 +1216,57 @@ async def run_multi_phase_orchestrator(
                 logger.error(f"Generator failed: {stderr[:500]}")
                 return EXIT_ERROR
 
-            artifact = stdout.strip()
-            write_text_atomic(iter_dir / "artifact.md", artifact)
+            # For edit mode, read the (potentially edited) artifact from file
+            # For regenerate mode, use stdout directly
+            if is_refinement and refine_mode == "edit":
+                artifact = curr_artifact_path.read_text(encoding="utf-8").strip()
+
+                # Validate that artifact was actually changed
+                prev_artifact_path = run_dir / "iterations" / str(iteration - 1) / "artifact.md"
+                changed, reason = validate_artifact_changed(
+                    prev_artifact_path, curr_artifact_path, max_size_change_pct
+                )
+
+                if not changed:
+                    write_live(f"  ⚠ {reason}")
+                    retry_count = state.get("validation_retries", 0) + 1
+
+                    if retry_count >= validation_retries:
+                        # Escalate to HITL after max retries
+                        write_live(f"  ⚠ Validation failed {retry_count} times - escalating to HITL")
+                        hitl_questions = [{
+                            "agent": "orchestrator",
+                            "questions": [{
+                                "id": "validation_failed",
+                                "question": f"Generator failed to apply edits after {retry_count} attempts. {reason}\n\nOptions:\n1. Manually edit the artifact at {curr_artifact_path}\n2. Switch to regenerate mode\n3. Accept current artifact",
+                                "priority": "high",
+                                "required": True,
+                            }],
+                        }]
+                        write_hitl_questions(run_dir, hitl_questions, iteration)
+                        state["awaiting_human"] = True
+                        state["validation_retries"] = retry_count
+                        save_json_atomic(state_path, state)
+                        logger.info("HITL requested due to validation failure")
+                        write_agent_result(run_dir, "needs_human", EXIT_HITL, questions=hitl_questions)
+                        return EXIT_HITL
+
+                    # Retry refinement
+                    state["validation_retries"] = retry_count
+                    save_json_atomic(state_path, state)
+                    write_live(f"  ℹ Retrying refinement (attempt {retry_count + 1}/{validation_retries})")
+                    continue
+                else:
+                    # Reset retry counter on success
+                    state["validation_retries"] = 0
+            else:
+                artifact = stdout.strip()
+
+            write_text_atomic(curr_artifact_path, artifact)
 
             token_count = len(artifact.split())
-            write_live(f"  ✓ Draft complete (~{token_count} words)")
+            phase_label = "Refined" if is_refinement else "Generated"
+            write_live(f"  ✓ {phase_label} artifact (~{token_count} words)")
 
             # Append to thread
             append_jsonl_durable(
@@ -1089,11 +1275,11 @@ async def run_multi_phase_orchestrator(
                     "id": sha256(f"generator:{utc_now_iso()}:{iteration}"),
                     "ts": utc_now_iso(),
                     "iteration": iteration,
-                    "phase": "generate",
+                    "phase": "refine" if is_refinement else "generate",
                     "agent": generate_agent_name,
                     "role": "assistant",
-                    "content": f"Generated artifact ({token_count} words)",
-                    "artifact_path": str(iter_dir / "artifact.md"),
+                    "content": f"{phase_label} artifact ({token_count} words)",
+                    "artifact_path": str(curr_artifact_path),
                 },
             )
 
@@ -1282,28 +1468,76 @@ async def run_multi_phase_orchestrator(
                     prev_adj = Adjudication.from_dict(load_json(prev_adjudication_path, {}))
                     prev_issues = {d.issue_id for d in prev_adj.decisions if d.status == "pursuing"}
                     curr_issues = {d.issue_id for d in adjudication.decisions if d.status == "pursuing"}
+
                     if prev_issues & curr_issues:
                         overlapping = prev_issues & curr_issues
-                        write_live(f"  ⚠ Thrashing detected: {overlapping}")
 
-                        # Check for HITL escalation
-                        if "thrashing" in termination_config.get("escalate_on", []):
-                            hitl_questions = [{
-                                "agent": "orchestrator",
-                                "questions": [{
-                                    "id": "thrashing",
-                                    "question": f"Thrashing detected on issues: {overlapping}. How should we proceed?",
-                                    "priority": "critical",
-                                    "required": True,
-                                }],
-                            }]
-                            write_hitl_questions(run_dir, hitl_questions, iteration)
-                            state["awaiting_human"] = True
-                            state["adjudication"] = adjudication.to_dict()
+                        # Track per-issue thrash counts (starts at 0, increments on each overlap)
+                        # First overlap = 1, second overlap = 2, etc.
+                        issue_thrash_counts = state.get("issue_thrash_counts", {})
+                        chronic_thrashers = []
+
+                        for issue_id in overlapping:
+                            issue_thrash_counts[issue_id] = issue_thrash_counts.get(issue_id, 0) + 1
+                            if issue_thrash_counts[issue_id] >= thrash_threshold:
+                                chronic_thrashers.append((issue_id, issue_thrash_counts[issue_id]))
+
+                        state["issue_thrash_counts"] = issue_thrash_counts
+
+                        if chronic_thrashers:
+                            # Format thrash details for HITL question
+                            thrash_details = "\n".join(
+                                f"  - {issue_id}: seen {count} times"
+                                for issue_id, count in chronic_thrashers
+                            )
+                            # Get guidance for thrashing issues
+                            issue_guidance = {}
+                            for d in adjudication.decisions:
+                                if d.issue_id in [t[0] for t in chronic_thrashers]:
+                                    issue_guidance[d.issue_id] = d.guidance or "No specific guidance"
+
+                            guidance_details = "\n".join(
+                                f"  - {issue_id}: {guidance}"
+                                for issue_id, guidance in issue_guidance.items()
+                            )
+
+                            write_live(f"  ⚠ Chronic thrashing on {len(chronic_thrashers)} issues")
+                            for issue_id, count in chronic_thrashers:
+                                write_live(f"    - {issue_id}: seen {count} times")
+
+                            # Check for HITL escalation
+                            if "thrashing" in termination_config.get("escalate_on", []):
+                                curr_artifact_path = iter_dir / "artifact.md"
+                                hitl_questions = [{
+                                    "agent": "orchestrator",
+                                    "questions": [{
+                                        "id": "thrashing",
+                                        "question": f"""Chronic thrashing detected - these issues have reappeared {thrash_threshold}+ times:
+{thrash_details}
+
+Current adjudicator guidance:
+{guidance_details}
+
+Options:
+1. Provide more specific edit instructions for these issues
+2. Dismiss these issues as acceptable trade-offs
+3. Manually edit the artifact at {curr_artifact_path}
+4. Switch to regenerate mode (full rewrite instead of edits)""",
+                                        "priority": "critical",
+                                        "required": True,
+                                    }],
+                                }]
+                                write_hitl_questions(run_dir, hitl_questions, iteration)
+                                state["awaiting_human"] = True
+                                state["adjudication"] = adjudication.to_dict()
+                                save_json_atomic(state_path, state)
+                                logger.info("HITL requested due to chronic thrashing")
+                                write_agent_result(run_dir, "needs_human", EXIT_HITL, questions=hitl_questions)
+                                return EXIT_HITL
+                        else:
+                            # First occurrence of overlap - log but continue
+                            write_live(f"  ℹ Issues reappeared (count < {thrash_threshold}): {overlapping}")
                             save_json_atomic(state_path, state)
-                            logger.info("HITL requested due to thrashing")
-                            write_agent_result(run_dir, "needs_human", EXIT_HITL, questions=hitl_questions)
-                            return EXIT_HITL
 
             # Check for conflicting criticals requiring HITL
             if "conflicting_criticals" in termination_config.get("escalate_on", []):

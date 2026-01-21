@@ -16,12 +16,16 @@
     },
     "refine": {
       "agent": "claude",
-      "max_iterations": 3
+      "max_iterations": 3,
+      "mode": "edit",
+      "validation_retries": 2,
+      "max_size_change_pct": 20
     }
   },
   "termination": {
     "approve_when": "no_critical_and_no_high",
-    "escalate_on": ["max_iterations", "thrashing"]
+    "escalate_on": ["max_iterations", "thrashing"],
+    "thrash_threshold": 2
   },
   "severity_levels": ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
 }

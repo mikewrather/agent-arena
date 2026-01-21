@@ -1206,8 +1206,18 @@ async def run_multi_phase_orchestrator(
 
             # Run generator
             agent = agents[generate_agent_name]
+            generator_cmd = list(agent.cmd)  # Copy to avoid mutating original
+
+            # For edit-mode refinement with Claude, add Edit tool permissions
+            if is_refinement and refine_mode == "edit" and agent.kind == "claude":
+                # Add permission flags for Edit tool access
+                if "--allowedTools" not in generator_cmd:
+                    generator_cmd.extend(["--allowedTools", "Edit,Read,Write,Bash"])
+                if "--permission-mode" not in generator_cmd:
+                    generator_cmd.extend(["--permission-mode", "bypassPermissions"])
+
             rc, stdout, stderr = await run_process(
-                agent.cmd, prompt, agent.timeout,
+                generator_cmd, prompt, agent.timeout,
                 stream_prefix=generate_agent_name if not args.no_stream else None,
                 suppress_stderr=agent.suppress_stderr,
             )

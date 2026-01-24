@@ -157,15 +157,13 @@ Output this welcome message to explain how genloop works:
 │        │   CRITIQUE   │  Fan out to all constraints × all agents       │    │
 │        └──────┬───────┘                                                │    │
 │               │                                                        │    │
-│       ┌───────┼───────┐                                                │    │
-│       ▼       ▼       ▼                                                │    │
+│       ┌───────┼───────┬───────┐                                        │    │
+│       ▼       ▼       ▼       ▼                                        │    │
 │   ┌───────┐┌───────┐┌───────┐                                          │    │
-│   │Accurcy││Securty││Clarity│ ◄── Your selected constraints            │    │
-│   └───┬───┘└───┬───┘└───┬───┘                                          │    │
-│       │        │        │                                              │    │
-│    ┌──┴──┐  ┌──┴──┐  ┌──┴──┐   Each constraint reviewed by:            │    │
-│    │C│X│G│  │C│X│G│  │C│X│G│   C=Claude  X=Codex  G=Gemini             │    │
-│    └──┬──┘  └──┬──┘  └──┬──┘                                           │    │
+│   │Constr.││Constr.││       │                                          │    │
+│   │   1   ││   2   ││  ...  │  Your selected constraints               │    │
+│   │ C|X|G ││ C|X|G ││       │  Each reviewed by all 3 agents           │    │
+│   └───┬───┘└───┬───┘└───┬───┘  C=Claude  X=Codex  G=Gemini             │    │
 │       │        │        │                                              │    │
 │       └────────┼────────┘                                              │    │
 │                ▼                                                       │    │

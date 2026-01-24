@@ -1,0 +1,56 @@
+# Consistency Constraint
+# Ensures content follows established patterns
+
+id: consistency
+priority: 4
+
+summary: |
+  Content must be consistent with established patterns.
+  Follow existing conventions in the codebase or documentation.
+  Maintain uniform style and structure throughout.
+
+rules:
+  - id: naming-conventions
+    text: |
+      Follow established naming conventions.
+      Variables, functions, files should match existing patterns.
+    default_severity: MEDIUM
+    examples:
+      violation: "getUserData()" when codebase uses "fetchUser()"
+      compliant: Follow existing verb choices and casing
+
+  - id: structural-patterns
+    text: |
+      Follow established structural patterns.
+      File organization, module layout, component structure.
+    default_severity: MEDIUM
+    examples:
+      violation: New component in flat structure when codebase uses folders
+      compliant: Match existing organization patterns
+
+  - id: style-uniformity
+    text: |
+      Maintain uniform style throughout the content.
+      Consistent formatting, punctuation, capitalization.
+    default_severity: LOW
+    examples:
+      violation: "Setup" in one heading, "set-up" in another
+      compliant: Consistent style choices throughout
+
+  - id: api-consistency
+    text: |
+      API design should be consistent with existing endpoints.
+      Similar operations should work similarly.
+    default_severity: HIGH
+    examples:
+      violation: "POST /users" creates, "PUT /products/add" also creates
+      compliant: "POST /users" and "POST /products" both create
+
+  - id: error-format
+    text: |
+      Error messages and responses should follow consistent format.
+      Same structure, same fields, predictable behavior.
+    default_severity: MEDIUM
+    examples:
+      violation: "Error: bad input" vs "{error: 'bad input', code: 400}"
+      compliant: Consistent error response structure

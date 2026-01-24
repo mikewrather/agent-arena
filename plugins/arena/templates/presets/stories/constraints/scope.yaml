@@ -1,0 +1,47 @@
+# Scope Constraint for Stories
+# Ensures stories are appropriately scoped
+
+id: scope
+priority: 2
+
+summary: |
+  Stories should be appropriately scoped for a single iteration.
+  Not too large (epic) or too small (task).
+  Delivers complete user value independently.
+
+rules:
+  - id: single-value
+    text: |
+      Story should deliver a single, coherent piece of user value.
+      If it has multiple unrelated outcomes, split it.
+    default_severity: HIGH
+    examples:
+      violation: "User can login AND view analytics dashboard" (two unrelated features)
+      compliant: "User can login with email/password"
+
+  - id: independent
+    text: |
+      Story should be implementable independently where possible.
+      Minimize dependencies on other in-flight work.
+    default_severity: MEDIUM
+    examples:
+      violation: Story requires 3 other stories to be completed first
+      compliant: Story can be developed and tested in isolation
+
+  - id: estimable
+    text: |
+      Story should be clear enough for developers to estimate.
+      Technical approach should be reasonably apparent.
+    default_severity: HIGH
+    examples:
+      violation: "Improve system performance" (too vague to estimate)
+      compliant: "Add caching layer for user profile API calls"
+
+  - id: small-enough
+    text: |
+      Story should be completable within a single sprint/iteration.
+      If larger, break into smaller stories.
+    default_severity: MEDIUM
+    examples:
+      violation: "Build entire checkout flow" (multiple sprints of work)
+      compliant: "Add cart summary display to checkout page"

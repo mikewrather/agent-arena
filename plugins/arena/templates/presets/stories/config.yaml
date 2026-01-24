@@ -1,0 +1,48 @@
+# Stories Preset Configuration
+# Optimized for user stories, specifications, and requirements
+
+max_iterations: 5
+
+constraints:
+  dir: .arena/constraints
+  routing:
+    default_agents: ["claude", "codex"]  # Stories benefit from code-aware perspective
+    rules:
+      - match: "acceptance*"
+        agents: ["claude", "codex"]
+
+phases:
+  generate:
+    agent: claude
+  critique:
+    pattern: parallel
+  adjudicate:
+    agent: claude
+  refine:
+    agent: claude
+    mode: edit
+    validation_retries: 2
+
+adjudication:
+  approval:
+    block_on: ["CRITICAL", "HIGH"]
+  escalation:
+    triggers: ["max_iterations", "thrashing", "conflicting_criticals"]
+  tensions:
+    - axis: "scope vs completeness"
+      guidance: |
+        Keep stories focused on a single user value.
+        Prefer smaller, well-defined stories over comprehensive ones.
+      winner_on_conflict: scope
+    - axis: "technical detail vs user focus"
+      guidance: |
+        Stories should be user-focused but include enough technical detail
+        for developers to estimate and implement confidently.
+
+termination:
+  approve_when: no_critical_and_no_high
+  escalate_on: ["max_iterations", "thrashing"]
+
+output:
+  dir: final
+  filename: artifact.md

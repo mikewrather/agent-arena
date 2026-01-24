@@ -1,0 +1,38 @@
+# Completeness Constraint for Documentation
+# Ensures documentation covers all requirements
+
+id: completeness
+priority: 2
+
+summary: |
+  Documentation must fully address all stated requirements.
+  No significant aspects should be omitted.
+  Cover edge cases and error scenarios.
+
+rules:
+  - id: all-requirements
+    text: |
+      All requirements stated in the goal must be addressed.
+      Check each requirement explicitly and verify coverage.
+    default_severity: HIGH
+    examples:
+      violation: "Document the API" but only covers GET endpoints
+      compliant: All HTTP methods and endpoints documented
+
+  - id: error-scenarios
+    text: |
+      Error scenarios and failure modes should be documented.
+      What happens when things go wrong?
+    default_severity: HIGH
+    examples:
+      violation: API docs show only success responses
+      compliant: Documents 400, 401, 403, 404, 500 responses
+
+  - id: examples-included
+    text: |
+      Complex features should include usage examples.
+      Don't just describe - demonstrate.
+    default_severity: MEDIUM
+    examples:
+      violation: "The function supports various options"
+      compliant: "Example: processData({timeout: 30, retries: 3})"

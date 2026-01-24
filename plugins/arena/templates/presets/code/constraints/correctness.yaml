@@ -1,0 +1,47 @@
+# Correctness Constraint for Code
+# Ensures code compiles and runs correctly
+
+id: correctness
+priority: 1
+
+summary: |
+  Code must be syntactically correct and functionally sound.
+  No syntax errors, undefined references, or obvious logic bugs.
+  Code should compile/parse without errors.
+
+rules:
+  - id: valid-syntax
+    text: |
+      Code must have valid syntax for the specified language.
+      No missing brackets, unclosed strings, or malformed statements.
+    default_severity: CRITICAL
+    examples:
+      violation: "function foo( { return x }"
+      compliant: "function foo() { return x; }"
+
+  - id: defined-references
+    text: |
+      All variables, functions, and types must be defined or imported.
+      No undefined symbols or missing dependencies.
+    default_severity: CRITICAL
+    examples:
+      violation: "const result = processData(input);" without processData being defined
+      compliant: Import or define all referenced symbols
+
+  - id: type-correctness
+    text: |
+      Type annotations must match actual values and operations.
+      No type mismatches that would cause runtime errors.
+    default_severity: HIGH
+    examples:
+      violation: "const count: number = 'five';"
+      compliant: "const count: number = 5;"
+
+  - id: logic-soundness
+    text: |
+      Code logic must be sound and produce expected results.
+      No off-by-one errors, infinite loops, or dead code paths.
+    default_severity: HIGH
+    examples:
+      violation: "for (let i = 0; i <= arr.length; i++)" (off-by-one)
+      compliant: "for (let i = 0; i < arr.length; i++)"

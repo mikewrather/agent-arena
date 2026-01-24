@@ -1,0 +1,47 @@
+# Acceptance Criteria Constraint for Stories
+# Ensures stories have clear, testable acceptance criteria
+
+id: acceptance-criteria
+priority: 1
+
+summary: |
+  Stories must have clear, testable acceptance criteria.
+  Each criterion should be specific and verifiable.
+  Criteria define "done" without ambiguity.
+
+rules:
+  - id: specific-criteria
+    text: |
+      Acceptance criteria must be specific and unambiguous.
+      Avoid vague language like "should work well" or "user-friendly".
+    default_severity: HIGH
+    examples:
+      violation: "The form should be easy to use"
+      compliant: "Form validates email format and shows inline errors within 100ms"
+
+  - id: testable
+    text: |
+      Each criterion must be testable - you can definitively say pass or fail.
+      Include specific inputs, actions, and expected outcomes.
+    default_severity: HIGH
+    examples:
+      violation: "Users can search effectively"
+      compliant: "Given a search query 'apple', results containing 'apple' appear within 2 seconds"
+
+  - id: complete-coverage
+    text: |
+      Acceptance criteria should cover the happy path, edge cases, and error states.
+      Don't just test success - test failure modes too.
+    default_severity: MEDIUM
+    examples:
+      violation: Only criteria for successful login
+      compliant: Includes invalid password, locked account, network error criteria
+
+  - id: measurable
+    text: |
+      Where applicable, criteria should include measurable thresholds.
+      Performance, timing, and quantity should be specified.
+    default_severity: MEDIUM
+    examples:
+      violation: "Page loads quickly"
+      compliant: "Page loads within 3 seconds on 3G connection"

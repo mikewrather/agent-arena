@@ -1,0 +1,44 @@
+# Documentation Preset Configuration
+# Optimized for technical documentation, guides, and API docs
+
+max_iterations: 5
+
+constraints:
+  dir: .arena/constraints
+  routing:
+    default_agents: ["claude", "codex", "gemini"]
+    rules:
+      - match: "accuracy*"
+        agents: ["claude", "codex"]  # Accuracy needs code-aware agents
+
+phases:
+  generate:
+    agent: claude
+  critique:
+    pattern: parallel
+  adjudicate:
+    agent: claude
+  refine:
+    agent: claude
+    mode: edit
+    validation_retries: 2
+
+adjudication:
+  approval:
+    block_on: ["CRITICAL", "HIGH"]
+  escalation:
+    triggers: ["max_iterations", "thrashing", "conflicting_criticals"]
+  tensions:
+    - axis: "completeness vs conciseness"
+      guidance: |
+        Include all necessary information but avoid redundancy.
+        Prefer brevity when it doesn't sacrifice clarity.
+      winner_on_conflict: completeness
+
+termination:
+  approve_when: no_critical_and_no_high
+  escalate_on: ["max_iterations", "thrashing"]
+
+output:
+  dir: final
+  filename: artifact.md

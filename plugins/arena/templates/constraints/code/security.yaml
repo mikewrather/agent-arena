@@ -1,0 +1,65 @@
+# Security Constraint for Code
+# Ensures code has no security vulnerabilities
+
+id: security
+priority: 1
+
+summary: |
+  Code must be free of security vulnerabilities.
+  Follow OWASP guidelines and secure coding practices.
+  No injection vulnerabilities, exposed secrets, or insecure patterns.
+
+rules:
+  - id: no-injection
+    text: |
+      No SQL, command, or code injection vulnerabilities.
+      All user input must be properly sanitized or parameterized.
+    default_severity: CRITICAL
+    examples:
+      violation: "db.query(`SELECT * FROM users WHERE id = ${userId}`)"
+      compliant: "db.query('SELECT * FROM users WHERE id = ?', [userId])"
+
+  - id: no-xss
+    text: |
+      No cross-site scripting (XSS) vulnerabilities.
+      User-provided content must be escaped before rendering in HTML.
+    default_severity: CRITICAL
+    examples:
+      violation: "innerHTML = userInput"
+      compliant: "textContent = userInput" or sanitize HTML
+
+  - id: no-hardcoded-secrets
+    text: |
+      No hardcoded passwords, API keys, or secrets in code.
+      Use environment variables or secure secret management.
+    default_severity: CRITICAL
+    examples:
+      violation: "const API_KEY = 'sk-1234567890abcdef'"
+      compliant: "const API_KEY = process.env.API_KEY"
+
+  - id: secure-auth
+    text: |
+      Authentication and authorization must be implemented securely.
+      No bypass vulnerabilities, weak password handling, or missing checks.
+    default_severity: HIGH
+    examples:
+      violation: "if (user.role == 'admin')" (string comparison, no server validation)
+      compliant: Server-side role verification with proper token validation
+
+  - id: secure-data-handling
+    text: |
+      Sensitive data must be handled securely.
+      Encrypt at rest and in transit, minimize data exposure.
+    default_severity: HIGH
+    examples:
+      violation: "logger.info(`User password: ${password}`)"
+      compliant: Never log sensitive data
+
+  - id: dependency-safety
+    text: |
+      Dependencies should be from trusted sources and up to date.
+      No known vulnerable versions.
+    default_severity: MEDIUM
+    examples:
+      violation: Using lodash 4.17.15 with prototype pollution vulnerability
+      compliant: Use latest patched versions

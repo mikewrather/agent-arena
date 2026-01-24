@@ -1,0 +1,56 @@
+# Testability Constraint for Code
+# Ensures code can be effectively tested
+
+id: testability
+priority: 4
+
+summary: |
+  Code should be structured for effective testing.
+  Functions should be pure where possible, dependencies injectable.
+  Side effects should be isolated and mockable.
+
+rules:
+  - id: injectable-dependencies
+    text: |
+      External dependencies should be injectable, not hardcoded.
+      Enables mocking in tests without monkey-patching.
+    default_severity: HIGH
+    examples:
+      violation: "function getUser() { return fetch('/api/users').then(...) }"
+      compliant: "function getUser(fetcher = fetch) { return fetcher('/api/users')... }"
+
+  - id: pure-functions
+    text: |
+      Business logic should be in pure functions where possible.
+      Same input always produces same output, no side effects.
+    default_severity: MEDIUM
+    examples:
+      violation: "function calculate() { return globalState.value * 2; }"
+      compliant: "function calculate(value) { return value * 2; }"
+
+  - id: isolated-side-effects
+    text: |
+      Side effects (IO, state changes) should be isolated at boundaries.
+      Core logic should be side-effect-free.
+    default_severity: MEDIUM
+    examples:
+      violation: Business logic mixed with database calls
+      compliant: Repository pattern separating data access from logic
+
+  - id: small-functions
+    text: |
+      Functions should be small and focused, doing one thing well.
+      Easier to test individual behaviors.
+    default_severity: LOW
+    examples:
+      violation: 200-line function handling multiple concerns
+      compliant: Multiple small functions, each testable independently
+
+  - id: deterministic-behavior
+    text: |
+      Code should behave deterministically for testing.
+      Time, randomness, and external state should be controllable.
+    default_severity: MEDIUM
+    examples:
+      violation: "const timestamp = Date.now()" hardcoded in logic
+      compliant: "function process(now = Date.now())" with injectable time

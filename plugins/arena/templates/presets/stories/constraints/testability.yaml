@@ -1,0 +1,47 @@
+# Testability Constraint for Stories
+# Ensures stories can be tested effectively
+
+id: testability
+priority: 3
+
+summary: |
+  Stories must be written to enable effective testing.
+  Clear inputs, outputs, and verification methods.
+  Test approach should be evident from the story.
+
+rules:
+  - id: test-approach-clear
+    text: |
+      How to test the story should be evident from reading it.
+      Acceptance criteria should map directly to test cases.
+    default_severity: HIGH
+    examples:
+      violation: Vague criteria with no clear test approach
+      compliant: "Given/When/Then format that maps to test scenarios"
+
+  - id: observable-outcome
+    text: |
+      Story outcome must be observable/verifiable.
+      Internal changes without visible effect need verification method.
+    default_severity: HIGH
+    examples:
+      violation: "Refactor authentication module" (no observable change)
+      compliant: "Refactor authentication module - login time reduced by 20%"
+
+  - id: test-data-specified
+    text: |
+      Required test data or preconditions should be specified.
+      Tester should know what setup is needed.
+    default_severity: MEDIUM
+    examples:
+      violation: "User can view their order history" (what orders? what user?)
+      compliant: "Given a user with 3 past orders, order history shows all 3"
+
+  - id: edge-cases-identified
+    text: |
+      Edge cases and boundary conditions should be identified.
+      Empty states, maximums, error conditions.
+    default_severity: MEDIUM
+    examples:
+      violation: Only happy path described
+      compliant: Includes empty cart, maximum items, out-of-stock scenarios

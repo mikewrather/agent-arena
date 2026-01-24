@@ -1,0 +1,38 @@
+# Accuracy Constraint for Documentation
+# Ensures all claims are factual and verifiable
+
+id: accuracy
+priority: 1
+
+summary: |
+  All factual claims must be accurate and verifiable.
+  Do not make up information or hallucinate details.
+  Technical information must match actual implementation.
+
+rules:
+  - id: verifiable-claims
+    text: |
+      Every factual claim must be verifiable from provided sources or common knowledge.
+      Do not assert specific dates, versions, or statistics without source backing.
+    default_severity: CRITICAL
+    examples:
+      violation: "The API was released in 2019" (when no source confirms this)
+      compliant: "According to the changelog, the API was released in v2.0"
+
+  - id: no-hallucination
+    text: |
+      Do not invent details, statistics, or quotes not present in source material.
+      If information is unavailable, acknowledge the gap rather than guessing.
+    default_severity: CRITICAL
+    examples:
+      violation: "This endpoint returns 15 fields including..." (when source doesn't specify)
+      compliant: "This endpoint returns the fields documented in the API reference"
+
+  - id: code-accuracy
+    text: |
+      Code examples must accurately reflect actual API behavior.
+      Parameter names, return types, and method signatures must match implementation.
+    default_severity: HIGH
+    examples:
+      violation: "client.getUser(id)" when actual method is "client.fetchUserById(id)"
+      compliant: Code examples verified against actual source code

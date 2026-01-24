@@ -1,0 +1,56 @@
+# Clarity Constraint for Documentation
+# Ensures content is easy to understand
+
+id: clarity
+priority: 3
+
+summary: |
+  Content must be easy to understand for the target audience.
+  Use clear language and logical structure.
+  Avoid unnecessary jargon and complexity.
+
+rules:
+  - id: plain-language
+    text: |
+      Use plain language appropriate for the audience. Avoid unnecessary jargon.
+      When technical terms are required, define them on first use.
+    default_severity: HIGH
+    examples:
+      violation: "Utilize the endpoint to instantiate a new resource"
+      compliant: "Use this endpoint to create a new resource"
+
+  - id: logical-flow
+    text: |
+      Information should flow logically from one point to the next.
+      Use headings, transitions, and progressive disclosure appropriately.
+    default_severity: MEDIUM
+    examples:
+      violation: "Advanced configuration options" before explaining basic usage
+      compliant: "Quick Start > Basic Usage > Advanced Configuration"
+
+  - id: consistent-terminology
+    text: |
+      Use consistent terminology throughout the document.
+      Don't alternate between synonyms for the same concept.
+    default_severity: MEDIUM
+    examples:
+      violation: "user" in one section, "customer" in another for same entity
+      compliant: Consistent use of "user" throughout
+
+  - id: actionable-instructions
+    text: |
+      Instructions must be actionable and unambiguous.
+      Reader should know exactly what to do at each step.
+    default_severity: HIGH
+    examples:
+      violation: "Configure the settings appropriately"
+      compliant: "Set TIMEOUT to 30 and RETRY_COUNT to 3"
+
+  - id: example-driven
+    text: |
+      Complex concepts should be illustrated with concrete examples.
+      Show, don't just tell.
+    default_severity: MEDIUM
+    examples:
+      violation: "The function accepts various options"
+      compliant: "The function accepts options like {timeout: 30, retries: 3}"

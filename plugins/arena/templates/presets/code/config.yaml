@@ -1,0 +1,51 @@
+# Code Preset Configuration
+# Optimized for code generation and implementation tasks
+
+max_iterations: 5
+
+constraints:
+  dir: .arena/constraints
+  routing:
+    default_agents: ["claude", "codex", "gemini"]
+    rules:
+      - match: "security*"
+        agents: ["claude", "codex"]  # Security needs thorough review
+      - match: "correctness*"
+        agents: ["claude", "codex"]  # Code correctness from code-focused agents
+
+phases:
+  generate:
+    agent: claude
+  critique:
+    pattern: parallel
+  adjudicate:
+    agent: claude
+  refine:
+    agent: claude
+    mode: edit
+    validation_retries: 3
+
+adjudication:
+  approval:
+    block_on: ["CRITICAL", "HIGH"]
+  escalation:
+    triggers: ["max_iterations", "thrashing", "conflicting_criticals"]
+  tensions:
+    - axis: "security vs convenience"
+      guidance: |
+        Security must never be compromised for convenience.
+        If a secure approach is more complex, use it anyway.
+      winner_on_conflict: security
+    - axis: "correctness vs performance"
+      guidance: |
+        Correct code first, optimize later.
+        Don't sacrifice correctness for micro-optimizations.
+      winner_on_conflict: correctness
+
+termination:
+  approve_when: no_critical_and_no_high
+  escalate_on: ["max_iterations", "thrashing"]
+
+output:
+  dir: final
+  filename: artifact.md

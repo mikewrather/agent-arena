@@ -1,0 +1,56 @@
+# Completeness Constraint
+# Ensures content fully addresses requirements
+
+id: completeness
+priority: 2
+
+summary: |
+  Content must fully address all stated requirements.
+  No significant aspects should be omitted.
+  Cover edge cases and error scenarios.
+
+rules:
+  - id: all-requirements
+    text: |
+      All requirements stated in the goal must be addressed.
+      Check each requirement explicitly and verify coverage.
+    default_severity: HIGH
+    examples:
+      violation: "Document the API" but only covers GET endpoints (missing POST, DELETE)
+      compliant: All HTTP methods and endpoints documented
+
+  - id: edge-cases
+    text: |
+      Edge cases and boundary conditions should be addressed.
+      Empty inputs, maximum values, null cases.
+    default_severity: MEDIUM
+    examples:
+      violation: Function only handles happy path
+      compliant: Handles empty array, null input, maximum size
+
+  - id: error-scenarios
+    text: |
+      Error scenarios and failure modes should be documented/handled.
+      What happens when things go wrong?
+    default_severity: HIGH
+    examples:
+      violation: API docs show only success responses
+      compliant: Documents 400, 401, 403, 404, 500 responses
+
+  - id: no-stubs
+    text: |
+      No placeholder text, TODOs, or unfinished sections.
+      All content must be complete and production-ready.
+    default_severity: HIGH
+    examples:
+      violation: "TODO: Add error handling here"
+      compliant: Fully implemented error handling
+
+  - id: examples-included
+    text: |
+      Complex features should include usage examples.
+      Don't just describe - demonstrate.
+    default_severity: MEDIUM
+    examples:
+      violation: "The function supports various options"
+      compliant: "Example: processData({timeout: 30, retries: 3})"

@@ -148,27 +148,26 @@ Output this welcome message to explain how genloop works:
 │   └──────┬───────┘                                                          │
 │          │                                                                  │
 │          ▼                                                                  │
-│   ┌──────────────┐                                                          │
-│   │   GENERATE   │  Claude creates initial content                          │
-│   └──────┬───────┘                                                          │
-│          │                                                                  │
-│          ▼                                                                  │
-│   ┌──────────────┐  ┌─────────┐ ┌─────────┐ ┌─────────┐                     │
-│   │   CRITIQUE   │──│ Claude  │ │  Codex  │ │ Gemini  │                     │
-│   └──────┬───────┘  └─────────┘ └─────────┘ └─────────┘                     │
-│          │          All agents review against all constraints               │
-│          ▼                                                                  │
-│   ┌──────────────┐                                                          │
-│   │  ADJUDICATE  │  Resolve conflicts, prioritize fixes                     │
-│   └──────┬───────┘                                                          │
-│          │                                                                  │
-│     ┌────┴────┐                                                             │
-│     ▼         ▼                                                             │
-│ ┌───────┐ ┌───────┐                                                         │
-│ │APPROVE│ │REFINE │──┐                                                      │
-│ └───┬───┘ └───────┘  │                                                      │
-│     │         ▲      │  Loop until approved or max iterations               │
-│     │         └──────┘                                                      │
+│   ┌──────────────┐ ◄───────────────────────────────────────────┐            │
+│   │   GENERATE   │  Claude creates/refines content             │            │
+│   └──────┬───────┘                                             │            │
+│          │                                                     │            │
+│          ▼                                                     │            │
+│   ┌──────────────┐  ┌─────────┐ ┌─────────┐ ┌─────────┐        │            │
+│   │   CRITIQUE   │──│ Claude  │ │  Codex  │ │ Gemini  │        │            │
+│   └──────┬───────┘  └─────────┘ └─────────┘ └─────────┘        │            │
+│          │          All agents review against all constraints  │            │
+│          ▼                                                     │            │
+│   ┌──────────────┐                                             │            │
+│   │  ADJUDICATE  │  Resolve conflicts, prioritize fixes        │            │
+│   └──────┬───────┘                                             │            │
+│          │                                                     │            │
+│     ┌────┴────┐                                                │            │
+│     ▼         ▼                                                │            │
+│ ┌───────┐ ┌───────┐                                            │            │
+│ │APPROVE│ │REFINE │────────────────────────────────────────────┘            │
+│ └───┬───┘ └───────┘  Loop back through critique until approved              │
+│     │                                                                       │
 │     ▼                                                                       │
 │   ┌──────────────┐                                                          │
 │   │    OUTPUT    │  Quality-assured content in .arena/runs/<name>/final/    │

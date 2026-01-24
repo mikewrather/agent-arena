@@ -4,6 +4,10 @@
 id: acceptance-criteria
 priority: 1
 
+# Optional: Override which agents critique this constraint
+# Defaults to genloop.yaml default_agents, then [claude, codex, gemini]
+# agents: [claude, codex]
+
 summary: |
   Stories must have clear, testable acceptance criteria.
   Each criterion should be specific and verifiable.

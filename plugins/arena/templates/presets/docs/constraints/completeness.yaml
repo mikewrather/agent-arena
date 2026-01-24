@@ -4,6 +4,10 @@
 id: completeness
 priority: 2
 
+# Optional: Override which agents critique this constraint
+# Defaults to genloop.yaml default_agents, then [claude, codex, gemini]
+# agents: [claude, codex]
+
 summary: |
   Documentation must fully address all stated requirements.
   No significant aspects should be omitted.

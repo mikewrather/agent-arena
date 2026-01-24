@@ -184,10 +184,30 @@ Output this welcome message to explain how genloop works:
 │                                                                             │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
+│   AGENT CONFIGURATION (override hierarchy)                                  │
+│                                                                             │
+│   Which agents critique each constraint is configurable at multiple levels: │
+│                                                                             │
+│   1. Per-constraint    agents: [claude, codex]     ◄── Highest priority     │
+│      (in constraint.yaml)                                                   │
+│                                                                             │
+│   2. Pattern rules     match: "security*"          ◄── In genloop.yaml      │
+│      (in genloop.yaml) agents: [claude, codex]                              │
+│                                                                             │
+│   3. Default agents    default_agents: [claude, codex, gemini]              │
+│      (in genloop.yaml)                                                      │
+│                                                                             │
+│   4. Built-in default  [claude, codex, gemini]     ◄── If nothing specified │
+│                                                                             │
+│   Tip: To quickly switch agents (e.g., quota limits), edit genloop.yaml     │
+│        default_agents. For constraint-specific needs, edit the constraint.  │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
 │   This wizard will help you configure:                                      │
 │   • What constraints to apply (accuracy, security, clarity, etc.)           │
 │   • How strict approval should be                                           │
-│   • Which agents participate in critique                                    │
+│   • Default agents for critique (can override per-constraint later)         │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```

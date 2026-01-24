@@ -4,6 +4,10 @@
 id: accuracy
 priority: 1
 
+# Optional: Override which agents critique this constraint
+# Defaults to genloop.yaml default_agents, then [claude, codex, gemini]
+# agents: [claude, codex]
+
 summary: |
   All factual claims must be accurate and verifiable.
   Do not make up information or hallucinate details.

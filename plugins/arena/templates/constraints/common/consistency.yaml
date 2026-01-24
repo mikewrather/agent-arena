@@ -4,6 +4,10 @@
 id: consistency
 priority: 4
 
+# Optional: Override which agents critique this constraint
+# Defaults to genloop.yaml default_agents, then [claude, codex, gemini]
+# agents: [claude, codex]
+
 summary: |
   Content must be consistent with established patterns.
   Follow existing conventions in the codebase or documentation.

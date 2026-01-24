@@ -4,6 +4,10 @@
 id: correctness
 priority: 1
 
+# Optional: Override which agents critique this constraint
+# Defaults to genloop.yaml default_agents, then [claude, codex, gemini]
+# agents: [claude, codex]
+
 summary: |
   Code must be syntactically correct and functionally sound.
   No syntax errors, undefined references, or obvious logic bugs.

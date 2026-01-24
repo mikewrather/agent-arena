@@ -142,36 +142,47 @@ Output this welcome message to explain how genloop works:
 │                                                                             │
 │   HOW IT WORKS                                                              │
 │                                                                             │
-│   ┌──────────────┐                                                          │
-│   │     GOAL     │  Your objective + source material                        │
-│   │ + CONSTRAINTS│  Quality rules (accuracy, security, etc.)                │
-│   └──────┬───────┘                                                          │
+│        ┌──────────────┐                                                     │
+│        │     GOAL     │  Your objective + source material                   │
+│        │ + CONSTRAINTS│  Quality rules (accuracy, security, etc.)           │
+│        └──────┬───────┘                                                     │
+│               │                                                             │
+│               ▼                                                             │
+│        ┌──────────────┐ ◄──────────────────────────────────────────────┐    │
+│        │   GENERATE   │  Claude creates/refines content                │    │
+│        └──────┬───────┘                                                │    │
+│               │                                                        │    │
+│               ▼                                                        │    │
+│        ┌──────────────┐                                                │    │
+│        │   CRITIQUE   │  Fan out to all constraints × all agents       │    │
+│        └──────┬───────┘                                                │    │
+│               │                                                        │    │
+│       ┌───────┼───────┐                                                │    │
+│       ▼       ▼       ▼                                                │    │
+│   ┌───────┐┌───────┐┌───────┐                                          │    │
+│   │Accurcy││Securty││Clarity│ ◄── Your selected constraints            │    │
+│   └───┬───┘└───┬───┘└───┬───┘                                          │    │
+│       │        │        │                                              │    │
+│    ┌──┴──┐  ┌──┴──┐  ┌──┴──┐   Each constraint reviewed by:            │    │
+│    │C│X│G│  │C│X│G│  │C│X│G│   C=Claude  X=Codex  G=Gemini             │    │
+│    └──┬──┘  └──┬──┘  └──┬──┘                                           │    │
+│       │        │        │                                              │    │
+│       └────────┼────────┘                                              │    │
+│                ▼                                                       │    │
+│        ┌──────────────┐                                                │    │
+│        │  ADJUDICATE  │  Merge critiques, resolve conflicts            │    │
+│        └──────┬───────┘                                                │    │
+│               │                                                        │    │
+│          ┌────┴────┐                                                   │    │
+│          ▼         ▼                                                   │    │
+│      ┌───────┐ ┌───────┐                                               │    │
+│      │APPROVE│ │REFINE │───────────────────────────────────────────────┘    │
+│      └───┬───┘ └───────┘  Loop back through critique until approved         │
 │          │                                                                  │
 │          ▼                                                                  │
-│   ┌──────────────┐ ◄───────────────────────────────────────────┐            │
-│   │   GENERATE   │  Claude creates/refines content             │            │
-│   └──────┬───────┘                                             │            │
-│          │                                                     │            │
-│          ▼                                                     │            │
-│   ┌──────────────┐  ┌─────────┐ ┌─────────┐ ┌─────────┐        │            │
-│   │   CRITIQUE   │──│ Claude  │ │  Codex  │ │ Gemini  │        │            │
-│   └──────┬───────┘  └─────────┘ └─────────┘ └─────────┘        │            │
-│          │          All agents review against all constraints  │            │
-│          ▼                                                     │            │
-│   ┌──────────────┐                                             │            │
-│   │  ADJUDICATE  │  Resolve conflicts, prioritize fixes        │            │
-│   └──────┬───────┘                                             │            │
-│          │                                                     │            │
-│     ┌────┴────┐                                                │            │
-│     ▼         ▼                                                │            │
-│ ┌───────┐ ┌───────┐                                            │            │
-│ │APPROVE│ │REFINE │────────────────────────────────────────────┘            │
-│ └───┬───┘ └───────┘  Loop back through critique until approved              │
-│     │                                                                       │
-│     ▼                                                                       │
-│   ┌──────────────┐                                                          │
-│   │    OUTPUT    │  Quality-assured content in .arena/runs/<name>/final/    │
-│   └──────────────┘                                                          │
+│        ┌──────────────┐                                                     │
+│        │    OUTPUT    │  Quality-assured content in .arena/runs/final/      │
+│        └──────────────┘                                                     │
 │                                                                             │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │

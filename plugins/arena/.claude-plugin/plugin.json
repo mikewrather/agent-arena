@@ -1,6 +1,6 @@
 {
   "name": "arena",
-  "version": "1.8.1",
+  "version": "1.8.2",
   "description": "Multi-agent orchestration system coordinating Claude Code, Codex, and Gemini CLIs for collaborative code review, security audits, and multi-perspective analysis",
   "author": {
     "name": "Mike Wrather"

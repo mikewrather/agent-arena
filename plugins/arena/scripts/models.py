@@ -135,6 +135,7 @@ class Constraint:
     script: Optional[str] = None  # Optional script to run before critique
     sources: Optional[List[str]] = None  # DEPRECATED: Reference files for critic (paths only)
     source_block: Optional[SourceBlock] = None  # NEW: Full source block with content resolution
+    agents: Optional[List[str]] = None  # Per-constraint agent override (e.g., ["claude", "codex"])
 
     @classmethod
     def from_yaml(cls, path: Path) -> "Constraint":
@@ -170,6 +171,14 @@ class Constraint:
             )
             sources = content["sources"]
 
+        # Parse optional agents override
+        agents = content.get("agents")
+        if agents and not isinstance(agents, list):
+            logger.warning(
+                f"Constraint '{content.get('id', path.stem)}': 'agents' must be a list, ignoring"
+            )
+            agents = None
+
         return cls(
             id=content.get("id", path.stem),
             priority=content.get("priority", 10),
@@ -179,6 +188,7 @@ class Constraint:
             script=content.get("script"),
             sources=sources,
             source_block=source_block,
+            agents=agents,
         )
 
 

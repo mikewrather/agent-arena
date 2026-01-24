@@ -1,0 +1,109 @@
+# Genloop Configuration: Release Notes Generation
+#
+# This config demonstrates all available settings for genloop workflows.
+# Copy this to .arena/genloop-configs/ and customize for your project.
+#
+# Usage:
+#   /arena:genloop my-run --config .arena/genloop-configs/release-notes.yaml
+
+# Maximum iterations before giving up (default: 3)
+max_iterations: 5
+
+# Allow script execution in source blocks (default: false)
+# Enable only if you trust the scripts defined in constraints
+allow_scripts: true
+
+# Constraint configuration
+constraints:
+  # Directory containing constraint YAML files (relative to project root)
+  dir: .arena/constraints
+
+  # Or list specific constraint files (both can be used together)
+  # files:
+  #   - .arena/constraints/accuracy.yaml
+  #   - .arena/constraints/completeness.yaml
+
+  # Agent routing - which LLMs critique which constraints
+  routing:
+    # Default agents if not specified per-constraint
+    default_agents: ["claude", "codex", "gemini"]
+
+    # Pattern-based routing (constraint id patterns)
+    # Uses glob/fnmatch patterns
+    rules:
+      - match: "security*"          # Security constraints
+        agents: ["claude", "codex"] # Only these agents review security
+      - match: "style*"             # Style/formatting constraints
+        agents: ["gemini"]          # Gemini handles style alone
+
+    # Priority-based routing
+    # Priority: 1-3 = high, 4-6 = medium, 7-10 = low
+    priority_routing:
+      - range: [1, 3]               # High priority (safety, legal)
+        agents: ["claude", "codex", "gemini"]  # All agents review
+      - range: [7, 10]              # Low priority (style, polish)
+        agents: ["gemini"]          # Only Gemini reviews
+
+# Phase configuration
+phases:
+  generate:
+    agent: claude                   # Which agent generates initial artifact
+
+  critique:
+    pattern: parallel               # parallel | sequential
+
+  adjudicate:
+    agent: claude                   # Which agent resolves conflicts
+
+  refine:
+    agent: claude                   # Which agent applies fixes
+    mode: edit                      # edit (surgical) | rewrite (full)
+    validation_retries: 2           # Retries if edit validation fails
+    max_size_change_pct: 20         # Max % size change before rejecting
+
+# Adjudication behavior
+adjudication:
+  approval:
+    # Block approval if any issues at these severities remain
+    block_on: ["CRITICAL", "HIGH"]
+
+    # Or use named policy instead of block_on:
+    # policy: no_critical           # Approve if no CRITICAL
+    # policy: no_critical_or_high   # Approve if no CRITICAL or HIGH
+    # policy: all_resolved          # Approve only if all issues resolved
+
+  escalation:
+    triggers:
+      - max_iterations              # Reached iteration limit
+      - thrashing                   # Same issues keep returning
+      - conflicting_criticals       # Fixing one breaks another
+    thrash_threshold: 2             # Iterations before thrashing detected
+
+  # Tension axes for balancing competing constraints
+  tensions:
+    - axis: "accuracy vs creativity"
+      guidance: "Prioritize factual accuracy over creative expression"
+      winner_on_conflict: accuracy
+
+    - axis: "completeness vs conciseness"
+      guidance: |
+        Cover all required topics but avoid verbosity.
+        Omit only if truly redundant.
+
+  # Custom adjudicator instructions
+  instructions: |
+    This config generates technical release notes.
+    Use precise terminology. Avoid marketing language.
+    Every feature/fix must have a direct link to source commits.
+
+# Termination policy
+termination:
+  approve_when: no_critical_and_no_high  # When to approve artifact
+  escalate_on:                          # When to ask human for help
+    - max_iterations
+    - thrashing
+
+# Output configuration
+output:
+  dir: final                        # Where approved artifacts go
+  filename: artifact.md             # Output filename

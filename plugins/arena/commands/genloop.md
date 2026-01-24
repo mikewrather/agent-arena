@@ -52,6 +52,126 @@ With custom adjudication (optional):
   --adjudication "approve_when: no_critical"
 ```
 
+## Using Configuration Files
+
+For reusable workflows, use a genloop configuration file:
+
+```
+/arena:genloop my-run --config .arena/genloop-configs/release-notes.yaml
+```
+
+Configuration files define all genloop settings in one place:
+- Maximum iterations
+- Constraint routing (which agents critique which constraints)
+- Phase configuration (which agent generates, adjudicates, refines)
+- Adjudication behavior (approval criteria, escalation triggers)
+- Termination policy
+
+### Project Structure
+
+```
+project/
+├── .arena/
+│   ├── genloop-configs/           # Genloop configuration files
+│   │   ├── release-notes.yaml
+│   │   ├── api-docs.yaml
+│   │   └── story-generation.yaml
+│   ├── constraints/               # Shared constraint definitions
+│   │   ├── accuracy.yaml
+│   │   ├── security.yaml
+│   │   └── style.yaml
+│   └── runs/                      # Run outputs
+```
+
+### Minimal Config
+
+```yaml
+# .arena/genloop-configs/minimal.yaml
+max_iterations: 3
+constraints:
+  dir: .arena/constraints
+  routing:
+    rules:
+      - match: "security*"
+        agents: ["claude", "codex"]
+```
+
+### Full Config Example
+
+```yaml
+# .arena/genloop-configs/release-notes.yaml
+max_iterations: 5
+allow_scripts: true
+
+constraints:
+  dir: .arena/constraints
+  routing:
+    default_agents: ["claude", "codex", "gemini"]
+    rules:
+      - match: "security*"
+        agents: ["claude", "codex"]
+      - match: "style*"
+        agents: ["gemini"]
+    priority_routing:
+      - range: [1, 3]
+        agents: ["claude", "codex", "gemini"]
+      - range: [7, 10]
+        agents: ["gemini"]
+
+phases:
+  generate:
+    agent: claude
+  critique:
+    pattern: parallel
+  adjudicate:
+    agent: claude
+  refine:
+    agent: claude
+    mode: edit
+    validation_retries: 2
+
+adjudication:
+  approval:
+    block_on: ["CRITICAL", "HIGH"]
+  escalation:
+    triggers: ["max_iterations", "thrashing"]
+  tensions:
+    - axis: "accuracy vs creativity"
+      guidance: "Prioritize factual accuracy"
+      winner_on_conflict: accuracy
+
+termination:
+  approve_when: no_critical_and_no_high
+  escalate_on: ["max_iterations", "thrashing"]
+
+output:
+  dir: final
+  filename: artifact.md
+```
+
+### Per-Constraint Agent Override
+
+Constraints can also specify their agents directly in the constraint YAML:
+
+```yaml
+# .arena/constraints/security.yaml
+id: security
+priority: 1
+agents: ["claude", "codex"]      # Only these agents critique this constraint
+summary: Security requirements...
+rules:
+  - id: no-injection
+    text: No SQL injection vulnerabilities
+    default_severity: CRITICAL
+```
+
+Resolution order for agent routing:
+1. Per-constraint `agents` field (highest priority)
+2. Config file `constraints.routing.rules` pattern match
+3. Config file `constraints.routing.priority_routing` range match
+4. Config file `constraints.routing.default_agents`
+5. Built-in default: `["claude", "codex", "gemini"]`
+
 ## Arguments
 
 | Argument | Required | Description |
@@ -64,6 +184,7 @@ With custom adjudication (optional):
 | `--adjudication "key: value"` | No | Override default adjudication behavior |
 | `--adjudication-yaml "yaml"` | No | Full YAML adjudication config |
 | `--max-iterations N` | No | Override max iterations (default: 3) |
+| `--config PATH` | No | Genloop configuration file (YAML) for routing and settings |
 
 *Required for inline mode. For file-based mode, use `--setup` then `--run`.
 

@@ -80,6 +80,11 @@ from config import (
     load_frontmatter_doc, load_mode, load_persona, load_profile, merge_profile,
 )
 
+# Import genloop config (for constraint-driven generation)
+from genloop_config import (
+    GenloopConfig, load_genloop_config, get_agents_for_constraint,
+)
+
 # Import HITL functions
 from hitl import (
     ingest_hitl_answers, write_hitl_questions,
@@ -628,8 +633,10 @@ CRITICAL RULES FOR BILL OF WORK:
 - Include enough context in "Find" to make matches unique
 - Keep edits minimal and surgical - don't rewrite entire sections
 
-OUTPUT REQUIREMENTS
-Respond with a SINGLE JSON object:
+OUTPUT FORMAT
+CRITICAL: You MUST use this exact two-section format. Do NOT put bill_of_work inside the JSON.
+
+=== ADJUDICATION ===
 {{
   "iteration": {iteration},
   "status": "REWRITE" | "APPROVED",
@@ -657,9 +664,11 @@ Respond with a SINGLE JSON object:
   "termination": {{
     "critical_pursuing": 0,
     "high_pursuing": 0
-  }},
-  "bill_of_work": "Use surgical edit format as specified above"
+  }}
 }}
+
+=== BILL_OF_WORK ===
+(Raw markdown with surgical edits - NO code fences around this section, NO bill_of_work field in JSON above)
 
 APPROVAL CRITERIA
 - Status should be "APPROVED" only if:
@@ -992,6 +1001,7 @@ async def run_multi_phase_orchestrator(
     run_dir: Path,
     agents: Dict[str, Agent],
     phases_config: Dict[str, Any],
+    genloop_cfg: Optional[GenloopConfig] = None,
 ) -> int:
     """Run multi-phase orchestration (Generate → Critique → Adjudicate → Refine loop)."""
     thread_path = run_dir / "thread.jsonl"
@@ -1069,8 +1079,6 @@ async def run_multi_phase_orchestrator(
     # Configuration
     refine_config = phases_config.get("refine", {})
     max_iterations = refine_config.get("max_iterations", 3)
-    if args.max_iterations:
-        max_iterations = args.max_iterations
 
     # Refine mode: "edit" (file-based, surgical edits) or "regenerate" (legacy, full regeneration)
     refine_mode = refine_config.get("mode", "edit")
@@ -1086,6 +1094,45 @@ async def run_multi_phase_orchestrator(
     adjudicate_agent_name = phases_config.get("adjudicate", {}).get("agent", "claude")
     critique_agents = phases_config.get("critique", {}).get("agents", ["claude", "codex", "gemini"])
 
+    # Apply genloop config overrides (genloop config takes priority)
+    if genloop_cfg:
+        logger.info(f"Applying genloop config from {genloop_cfg.source_path}")
+
+        # Override max_iterations
+        if genloop_cfg.max_iterations != 3:  # Non-default value
+            max_iterations = genloop_cfg.max_iterations
+
+        # Override allow_scripts if genloop config specifies it
+        if genloop_cfg.allow_scripts and not args.allow_scripts:
+            logger.info("  Enabling allow_scripts from genloop config")
+            args.allow_scripts = True
+
+        # Override phase agents
+        if genloop_cfg.phases.generate.agent != "claude":
+            generate_agent_name = genloop_cfg.phases.generate.agent
+        if genloop_cfg.phases.adjudicate.agent != "claude":
+            adjudicate_agent_name = genloop_cfg.phases.adjudicate.agent
+
+        # Override refine settings
+        if genloop_cfg.phases.refine.mode != "edit":
+            refine_mode = genloop_cfg.phases.refine.mode
+        if genloop_cfg.phases.refine.validation_retries != 2:
+            validation_retries = genloop_cfg.phases.refine.validation_retries
+        if genloop_cfg.phases.refine.max_size_change_pct != 20.0:
+            max_size_change_pct = genloop_cfg.phases.refine.max_size_change_pct
+
+        # Override termination settings
+        if genloop_cfg.termination.approve_when != "no_critical_and_no_high":
+            approve_when = genloop_cfg.termination.approve_when
+
+        # Get default critique agents from genloop config routing
+        if genloop_cfg.constraints.routing.default_agents != ["claude", "codex", "gemini"]:
+            critique_agents = genloop_cfg.constraints.routing.default_agents
+
+    # CLI args override everything
+    if args.max_iterations:
+        max_iterations = args.max_iterations
+
     # Validate agents exist
     for agent_name in [generate_agent_name, adjudicate_agent_name] + critique_agents:
         if agent_name not in agents:
@@ -1095,6 +1142,8 @@ async def run_multi_phase_orchestrator(
     # Log configuration
     write_live("=" * 60)
     write_live(f"RELIABLE GENERATION: {run_dir.name}")
+    if genloop_cfg and genloop_cfg.source_path:
+        write_live(f"Config: {genloop_cfg.source_path}")
     write_live(f"Goal: {goal[:50]}...")
     constraint_summary = ", ".join(f"{c.id} ({len(c.rules)} rules)" for c in constraints)
     write_live(f"Constraints: {constraint_summary}" if constraints else "Constraints: (none)")
@@ -1118,14 +1167,24 @@ async def run_multi_phase_orchestrator(
         write_live("")
 
         if constraints:
-            write_live("CONSTRAINT ROUTING (all-to-all):")
-            total_critiques = len(constraints) * len(critique_agents)
-            write_live(f"  {len(constraints)} constraints × {len(critique_agents)} agents = {total_critiques} critique tasks")
-            write_live("")
+            routing_label = "config-based" if genloop_cfg else "all-to-all"
+            write_live(f"CONSTRAINT ROUTING ({routing_label}):")
+            total_critiques = 0
+            constraint_routing = []
             for constraint in constraints:
+                # Get agents for this constraint using config routing
+                constraint_agents = get_agents_for_constraint(
+                    constraint, genloop_cfg, available_agents=critique_agents
+                ) if genloop_cfg else critique_agents
+                total_critiques += len(constraint_agents)
+                constraint_routing.append((constraint, constraint_agents))
+
+            write_live(f"  {len(constraints)} constraints, {total_critiques} critique tasks")
+            write_live("")
+            for constraint, routing_agents in constraint_routing:
+                agents_str = ", ".join(routing_agents) if routing_agents else "(none)"
                 write_live(f"  {constraint.id} (priority {constraint.priority}, {len(constraint.rules)} rules):")
-                for agent in critique_agents:
-                    write_live(f"    → {agent}")
+                write_live(f"    → {agents_str}")
         else:
             write_live("⚠ NO CONSTRAINTS FOUND")
             write_live("")
@@ -1210,12 +1269,15 @@ async def run_multi_phase_orchestrator(
 
             # For edit-mode refinement with Claude, add Edit tool permissions
             if is_refinement and refine_mode == "edit" and agent.kind == "claude":
-                # Add permission flags for Edit tool access
-                if "--allowedTools" not in generator_cmd:
-                    generator_cmd.extend(["--allowedTools", "Edit,Read,Write,Bash"])
-                if "--permission-mode" not in generator_cmd:
-                    generator_cmd.extend(["--permission-mode", "bypassPermissions"])
+                # Bypass permission prompts for file editing
+                # acceptEdits alone doesn't work when settings.json has dontAsk default
+                if "--dangerously-skip-permissions" not in generator_cmd:
+                    generator_cmd.append("--dangerously-skip-permissions")
+                # Scope file access to the run directory
+                if "--add-dir" not in generator_cmd:
+                    generator_cmd.extend(["--add-dir", str(run_dir)])
 
+            logger.debug(f"Generator command: {' '.join(generator_cmd)}")
             rc, stdout, stderr = await run_process(
                 generator_cmd, prompt, agent.timeout,
                 stream_prefix=generate_agent_name if not args.no_stream else None,
@@ -1321,7 +1383,17 @@ async def run_multi_phase_orchestrator(
             arena_home = global_dir if global_dir else Path.home() / ".arena"
 
             for constraint in constraints:
-                for agent_name in critique_agents:
+                # Determine which agents should critique this constraint
+                # Uses genloop config routing if available, otherwise falls back to critique_agents
+                constraint_agents = get_agents_for_constraint(
+                    constraint, genloop_cfg, available_agents=critique_agents
+                ) if genloop_cfg else critique_agents
+
+                for agent_name in constraint_agents:
+                    if agent_name not in agents:
+                        logger.warning(f"Agent '{agent_name}' not configured, skipping for {constraint.id}")
+                        continue
+
                     agent = agents[agent_name]
                     prompt = build_critic_prompt(
                         constraint=constraint,
@@ -1835,6 +1907,19 @@ async def _run_orchestrator_inner(
         or cfg.get("default_pattern")
     )
 
+    # Load genloop config if specified
+    genloop_cfg: Optional[GenloopConfig] = None
+    if hasattr(args, 'genloop_config') and args.genloop_config:
+        try:
+            genloop_cfg = load_genloop_config(args.genloop_config)
+            logger.info(f"Loaded genloop config: {args.genloop_config}")
+        except FileNotFoundError:
+            logger.error(f"Genloop config not found: {args.genloop_config}")
+            return EXIT_ERROR
+        except Exception as e:
+            logger.error(f"Failed to load genloop config: {e}")
+            return EXIT_ERROR
+
     if pattern == "multi-phase" or phases_config:
         logger.info("Multi-phase pattern detected - using reliable generation orchestrator")
         return await run_multi_phase_orchestrator(
@@ -1845,6 +1930,7 @@ async def _run_orchestrator_inner(
             run_dir=run_dir,
             agents=agents,
             phases_config=phases_config or {},
+            genloop_cfg=genloop_cfg,
         )
 
     # Dynamic routing: select experts based on goal if enabled
@@ -2450,6 +2536,10 @@ def main() -> int:
     ap.add_argument(
         "--allow-scripts", action="store_true",
         help="Allow script execution in source blocks (security: disabled by default)"
+    )
+    ap.add_argument(
+        "--genloop-config", type=Path, metavar="PATH",
+        help="Genloop configuration file (YAML) for constraint routing and phase settings"
     )
     ap.add_argument(
         "--template-info", action="store_true",

@@ -54,32 +54,75 @@ def parse_critique(raw: str, agent_name: str, constraint_id: str, iteration: int
 
 
 def parse_adjudication(raw: str, iteration: int) -> Adjudication:
-    """Parse adjudication YAML/JSON from agent output."""
+    """Parse adjudication from agent output.
+
+    Supports two formats:
+    1. Multi-section format (preferred): Separate ADJUDICATION and BILL_OF_WORK sections
+    2. Legacy format: Single JSON/YAML block with embedded bill_of_work field
+    """
     raw = raw.strip()
 
+    # Try multi-section format first (avoids nested code block issues)
+    adj_section_match = re.search(
+        r"===\s*ADJUDICATION\s*===\s*([\s\S]*?)(?====\s*BILL_OF_WORK\s*===|$)",
+        raw
+    )
+    bow_section_match = re.search(
+        r"===\s*BILL_OF_WORK\s*===\s*([\s\S]*?)$",
+        raw
+    )
+
+    if adj_section_match:
+        adj_raw = adj_section_match.group(1).strip()
+        bill_of_work = bow_section_match.group(1).strip() if bow_section_match else ""
+
+        # Extract JSON from the adjudication section (may be in code block)
+        json_block = re.search(r"```(?:json)?\s*([\s\S]*?)```", adj_raw, re.DOTALL)
+        if json_block:
+            adj_raw = json_block.group(1).strip()
+
+        try:
+            obj = json.loads(adj_raw)
+        except json.JSONDecodeError:
+            try:
+                obj = yaml.safe_load(adj_raw)
+            except Exception as e:
+                logger.warning(f"Failed to parse adjudication section: {e}")
+                return Adjudication(
+                    iteration=iteration,
+                    status="ERROR",
+                    tension_analysis=[],
+                    decisions=[],
+                    bill_of_work=f"Failed to parse adjudication: {e}",
+                )
+
+        # Multi-section format: bill_of_work comes from separate section
+        obj["bill_of_work"] = bill_of_work
+        adjudication = Adjudication.from_dict(obj)
+        adjudication.iteration = iteration
+        return adjudication
+
+    # Legacy format: single JSON/YAML block with embedded bill_of_work
     # Extract content from markdown code blocks
-    # Try ```json first (most common for Claude)
     json_block = re.search(r"```json\s*([\s\S]*?)```", raw, re.DOTALL)
     if json_block:
         raw = json_block.group(1).strip()
     else:
-        # Try ```yaml
         yaml_block = re.search(r"```yaml\s*([\s\S]*?)```", raw, re.DOTALL)
         if yaml_block:
             raw = yaml_block.group(1).strip()
         else:
-            # Try bare ``` block
             bare_block = re.search(r"```\s*([\s\S]*?)```", raw, re.DOTALL)
             if bare_block:
                 raw = bare_block.group(1).strip()
 
     try:
-        # Try JSON first
         obj = json.loads(raw)
     except json.JSONDecodeError:
         try:
-            # Fall back to YAML
             obj = yaml.safe_load(raw)
+            if not isinstance(obj, dict):
+                raise ValueError(f"YAML parsed to {type(obj).__name__}, expected dict")
         except Exception as e:
             logger.warning(f"Failed to parse adjudication: {e}")
             return Adjudication(

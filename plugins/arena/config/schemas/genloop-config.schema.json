@@ -1,0 +1,335 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "https://arena.dev/schemas/genloop-config.schema.json",
+  "title": "Genloop Configuration",
+  "description": "Configuration file for genloop constraint-driven generation workflows",
+  "type": "object",
+  "properties": {
+    "max_iterations": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20,
+      "default": 3,
+      "description": "Maximum refinement iterations before giving up"
+    },
+    "allow_scripts": {
+      "type": "boolean",
+      "default": false,
+      "description": "Allow script execution in source blocks (security risk)"
+    },
+    "constraints": {
+      "type": "object",
+      "description": "Constraint configuration",
+      "properties": {
+        "dir": {
+          "type": "string",
+          "description": "Directory containing constraint YAML files (relative to project root)"
+        },
+        "files": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Specific constraint file paths"
+        },
+        "routing": {
+          "type": "object",
+          "description": "Agent routing configuration for constraints",
+          "properties": {
+            "default_agents": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["claude", "codex", "gemini"]
+              },
+              "default": ["claude", "codex", "gemini"],
+              "description": "Default agents if not specified per-constraint"
+            },
+            "rules": {
+              "type": "array",
+              "description": "Pattern-based routing rules",
+              "items": {
+                "type": "object",
+                "required": ["match", "agents"],
+                "properties": {
+                  "match": {
+                    "type": "string",
+                    "description": "Glob pattern for constraint IDs (e.g., 'security*')"
+                  },
+                  "agents": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": ["claude", "codex", "gemini"]
+                    },
+                    "description": "Agents for matching constraints"
+                  }
+                }
+              }
+            },
+            "priority_routing": {
+              "type": "array",
+              "description": "Priority-range routing rules",
+              "items": {
+                "type": "object",
+                "required": ["range", "agents"],
+                "properties": {
+                  "range": {
+                    "type": "array",
+                    "items": { "type": "integer" },
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "description": "[min, max] priority range (1=highest, 10=lowest)"
+                  },
+                  "agents": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": ["claude", "codex", "gemini"]
+                    },
+                    "description": "Agents for constraints in this priority range"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "phases": {
+      "type": "object",
+      "description": "Phase configuration",
+      "properties": {
+        "generate": {
+          "type": "object",
+          "properties": {
+            "agent": {
+              "type": "string",
+              "enum": ["claude", "codex", "gemini"],
+              "default": "claude",
+              "description": "Agent for generation phase"
+            }
+          }
+        },
+        "critique": {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "enum": ["parallel", "sequential"],
+              "default": "parallel",
+              "description": "Critique execution pattern"
+            }
+          }
+        },
+        "adjudicate": {
+          "type": "object",
+          "properties": {
+            "agent": {
+              "type": "string",
+              "enum": ["claude", "codex", "gemini"],
+              "default": "claude",
+              "description": "Agent for adjudication phase"
+            }
+          }
+        },
+        "refine": {
+          "type": "object",
+          "properties": {
+            "agent": {
+              "type": "string",
+              "enum": ["claude", "codex", "gemini"],
+              "default": "claude",
+              "description": "Agent for refinement phase"
+            },
+            "mode": {
+              "type": "string",
+              "enum": ["edit", "rewrite"],
+              "default": "edit",
+              "description": "Refinement mode: edit (surgical changes) or rewrite (full regeneration)"
+            },
+            "validation_retries": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 5,
+              "default": 2,
+              "description": "Number of retries if validation fails"
+            },
+            "max_size_change_pct": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "default": 20,
+              "description": "Maximum allowed size change percentage"
+            }
+          }
+        }
+      }
+    },
+    "adjudication": {
+      "type": "object",
+      "description": "Adjudication behavior configuration",
+      "properties": {
+        "approval": {
+          "type": "object",
+          "description": "Approval criteria",
+          "properties": {
+            "block_on": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+              },
+              "default": ["CRITICAL", "HIGH"],
+              "description": "Block approval if any issues at these severities"
+            },
+            "policy": {
+              "type": "string",
+              "enum": ["no_critical", "no_critical_or_high", "all_resolved"],
+              "description": "Named approval policy (alternative to block_on)"
+            }
+          }
+        },
+        "escalation": {
+          "type": "object",
+          "description": "HITL escalation configuration",
+          "properties": {
+            "triggers": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["max_iterations", "thrashing", "conflicting_criticals"]
+              },
+              "default": ["max_iterations", "thrashing", "conflicting_criticals"],
+              "description": "Conditions that trigger HITL escalation"
+            },
+            "thrash_threshold": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10,
+              "default": 2,
+              "description": "Number of times same issue can return before thrashing"
+            }
+          }
+        },
+        "tensions": {
+          "type": "array",
+          "description": "Tension axes for balancing constraints",
+          "items": {
+            "type": "object",
+            "required": ["axis"],
+            "properties": {
+              "axis": {
+                "type": "string",
+                "description": "The competing constraints (e.g., 'accuracy vs creativity')"
+              },
+              "guidance": {
+                "type": "string",
+                "description": "Instructions for finding the right balance"
+              },
+              "winner_on_conflict": {
+                "type": "string",
+                "description": "Which constraint wins if irreconcilable (constraint id)"
+              }
+            }
+          }
+        },
+        "instructions": {
+          "type": "string",
+          "description": "Custom adjudicator instructions"
+        }
+      }
+    },
+    "termination": {
+      "type": "object",
+      "description": "Termination policy",
+      "properties": {
+        "approve_when": {
+          "type": "string",
+          "enum": ["no_critical", "no_critical_and_no_high", "all_resolved"],
+          "default": "no_critical_and_no_high",
+          "description": "When to approve the artifact"
+        },
+        "escalate_on": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["max_iterations", "thrashing", "conflicting_criticals"]
+          },
+          "default": ["max_iterations", "thrashing"],
+          "description": "Conditions that trigger HITL escalation"
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "description": "Output configuration",
+      "properties": {
+        "dir": {
+          "type": "string",
+          "default": "final",
+          "description": "Directory for approved artifacts (relative to run dir)"
+        },
+        "filename": {
+          "type": "string",
+          "default": "artifact.md",
+          "description": "Output filename"
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "max_iterations": 5,
+      "allow_scripts": true,
+      "constraints": {
+        "dir": ".arena/constraints",
+        "routing": {
+          "default_agents": ["claude", "codex", "gemini"],
+          "rules": [
+            { "match": "security*", "agents": ["claude", "codex"] },
+            { "match": "style*", "agents": ["gemini"] }
+          ],
+          "priority_routing": [
+            { "range": [1, 3], "agents": ["claude", "codex", "gemini"] },
+            { "range": [7, 10], "agents": ["gemini"] }
+          ]
+        }
+      },
+      "phases": {
+        "generate": { "agent": "claude" },
+        "critique": { "pattern": "parallel" },
+        "adjudicate": { "agent": "claude" },
+        "refine": { "agent": "claude", "mode": "edit" }
+      },
+      "adjudication": {
+        "approval": { "block_on": ["CRITICAL", "HIGH"] },
+        "escalation": { "triggers": ["max_iterations", "thrashing"] },
+        "tensions": [
+          {
+            "axis": "accuracy vs creativity",
+            "guidance": "Prioritize factual accuracy",
+            "winner_on_conflict": "accuracy"
+          }
+        ]
+      },
+      "termination": {
+        "approve_when": "no_critical_and_no_high",
+        "escalate_on": ["max_iterations", "thrashing"]
+      },
+      "output": {
+        "dir": "final",
+        "filename": "artifact.md"
+      }
+    },
+    {
+      "max_iterations": 3,
+      "constraints": {
+        "dir": ".arena/constraints",
+        "routing": {
+          "rules": [
+            { "match": "security*", "agents": ["claude", "codex"] }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+# Minimal Genloop Configuration
+#
+# This shows the minimum config needed - just override what you need,
+# sensible defaults apply for everything else.
+#
+# Usage:
+#   /arena:genloop my-run --config .arena/genloop-configs/minimal.yaml
+
+max_iterations: 3
+
+constraints:
+  dir: .arena/constraints
+  routing:
+    rules:
+      - match: "security*"
+        agents: ["claude", "codex"]

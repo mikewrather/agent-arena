@@ -12,17 +12,17 @@ Pre-configured genloop bundles for common use cases. Each preset includes a `con
 
 ## Usage
 
-Use the `--template` flag with `/arena:init`:
+Use the `--template` flag with `/arena:genloop-init`:
 
 ```bash
 # Initialize with docs preset
-/arena:init --template docs
+/arena:genloop-init --template docs
 
 # Initialize with code preset
-/arena:init --template code
+/arena:genloop-init --template code
 
 # Initialize with stories preset
-/arena:init --template stories
+/arena:genloop-init --template stories
 ```
 
 This copies the preset's `config.yaml` and `constraints/` to your project's `.arena/` directory.
@@ -58,4 +58,4 @@ templates/presets/my-preset/
     └── my-constraint.yaml
 ```
 
-Then use: `/arena:init --template my-preset`
+Then use: `/arena:genloop-init --template my-preset`

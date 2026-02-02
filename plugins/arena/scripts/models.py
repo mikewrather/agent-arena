@@ -136,6 +136,7 @@ class Constraint:
     sources: Optional[List[str]] = None  # DEPRECATED: Reference files for critic (paths only)
     source_block: Optional[SourceBlock] = None  # NEW: Full source block with content resolution
     agents: Optional[List[str]] = None  # Per-constraint agent override (e.g., ["claude", "codex"])
+    behavior: Optional[Dict[str, str]] = None  # Per-severity behavior overrides for genflow
 
     @classmethod
     def from_yaml(cls, path: Path) -> "Constraint":
@@ -179,6 +180,14 @@ class Constraint:
             )
             agents = None
 
+        # Parse optional behavior overrides (for genflow)
+        behavior = content.get("behavior")
+        if behavior and not isinstance(behavior, dict):
+            logger.warning(
+                f"Constraint '{content.get('id', path.stem)}': 'behavior' must be a dict, ignoring"
+            )
+            behavior = None
+
         return cls(
             id=content.get("id", path.stem),
             priority=content.get("priority", 10),
@@ -189,6 +198,7 @@ class Constraint:
             sources=sources,
             source_block=source_block,
             agents=agents,
+            behavior=behavior,
         )
 
 

@@ -85,6 +85,10 @@ from genloop_config import (
     GenloopConfig, load_genloop_config, get_agents_for_constraint,
 )
 
+# Import genflow config and orchestrator (for configurable workflow engine)
+from genflow_config import GenflowConfig, load_genflow_config
+from genflow import run_genflow_orchestrator
+
 # Import HITL functions
 from hitl import (
     ingest_hitl_answers, write_hitl_questions,
@@ -1899,6 +1903,28 @@ async def _run_orchestrator_inner(
             logger.error(f"Agent '{agent_name}' in order but not defined in agents")
             return EXIT_ERROR
 
+    # Check for genflow config BEFORE multi-phase pattern
+    if hasattr(args, 'genflow_config') and args.genflow_config:
+        try:
+            genflow_cfg = load_genflow_config(args.genflow_config)
+            logger.info(f"Loaded genflow config: {args.genflow_config}")
+            logger.info("Using genflow workflow orchestrator")
+            return await run_genflow_orchestrator(
+                args=args,
+                cfg=cfg,
+                state_dir=state_dir,
+                run_dir=run_dir,
+                agents=agents,
+                genflow_cfg=genflow_cfg,
+                global_dir=global_dir,
+            )
+        except FileNotFoundError:
+            logger.error(f"Genflow config not found: {args.genflow_config}")
+            return EXIT_ERROR
+        except Exception as e:
+            logger.error(f"Failed to load genflow config: {e}")
+            return EXIT_ERROR
+
     # Check for multi-phase pattern (reliable generation)
     phases_config = cfg.get("phases")
     pattern = (
@@ -2540,6 +2566,10 @@ def main() -> int:
     ap.add_argument(
         "--genloop-config", type=Path, metavar="PATH",
         help="Genloop configuration file (YAML) for constraint routing and phase settings"
+    )
+    ap.add_argument(
+        "--genflow-config", type=Path, metavar="PATH",
+        help="Genflow workflow configuration file (YAML) for configurable workflow engine"
     )
     ap.add_argument(
         "--template-info", action="store_true",

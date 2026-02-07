@@ -6,13 +6,13 @@ This template implements constraint-driven generation with iterative refinement.
 
 ```bash
 # 1. Create a new run
-python3 ~/.arena/arena.py --name my-generation -p reliable-generation
+uv run --project ${CLAUDE_PLUGIN_ROOT} python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py --name my-generation -p reliable-generation
 
 # 2. Copy template files to your run
-cp -r ~/.arena/templates/reliable-generation/* .arena/runs/my-generation/
+cp -r ${CLAUDE_PLUGIN_ROOT}/templates/reliable-generation/* .arena/runs/my-generation/
 
 # 3. Edit goal.yaml and constraints, then run
-python3 ~/.arena/arena.py --name my-generation -p reliable-generation
+uv run --project ${CLAUDE_PLUGIN_ROOT} python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py --name my-generation -p reliable-generation
 ```
 
 ---
@@ -314,19 +314,19 @@ rules:
 
 ```bash
 # Create/run with profile
-python3 ~/.arena/arena.py --name <name> -p reliable-generation
+uv run --project ${CLAUDE_PLUGIN_ROOT} python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py --name <name> -p reliable-generation
 
 # Preview constraint routing (no execution)
-python3 ~/.arena/arena.py --name <name> -p reliable-generation --dry-run
+uv run --project ${CLAUDE_PLUGIN_ROOT} python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py --name <name> -p reliable-generation --dry-run
 
 # Override max iterations (default: 3)
-python3 ~/.arena/arena.py --name <name> -p reliable-generation --max-iterations 5
+uv run --project ${CLAUDE_PLUGIN_ROOT} python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py --name <name> -p reliable-generation --max-iterations 5
 
 # Disable streaming output
-python3 ~/.arena/arena.py --name <name> -p reliable-generation --no-stream
+uv run --project ${CLAUDE_PLUGIN_ROOT} python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py --name <name> -p reliable-generation --no-stream
 
 # Verbose logging
-python3 ~/.arena/arena.py --name <name> -p reliable-generation -v
+uv run --project ${CLAUDE_PLUGIN_ROOT} python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py --name <name> -p reliable-generation -v
 ```
 
 ---
@@ -382,7 +382,7 @@ When HITL triggers:
 {"answers": [{"question_id": "q1", "answer": "your decision here"}]}
 
 # Then re-run:
-python3 ~/.arena/arena.py --name <name> -p reliable-generation
+uv run --project ${CLAUDE_PLUGIN_ROOT} python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py --name <name> -p reliable-generation
 ```
 
 ---

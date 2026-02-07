@@ -359,17 +359,17 @@ rules:
 **Usage:**
 ```bash
 # Create run with reliable-generation profile
-python3 ~/.arena/arena.py --name story-gen -p reliable-generation
+uv run --project ${CLAUDE_PLUGIN_ROOT} python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py --name story-gen -p reliable-generation
 
 # Edit goal and add constraints
 vim .arena/runs/story-gen/goal.yaml
 vim .arena/runs/story-gen/constraints/safety.yaml
 
 # Preview constraint routing without executing
-python3 ~/.arena/arena.py --name story-gen -p reliable-generation --dry-run
+uv run --project ${CLAUDE_PLUGIN_ROOT} python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py --name story-gen -p reliable-generation --dry-run
 
 # Run with custom max iterations
-python3 ~/.arena/arena.py --name story-gen -p reliable-generation --max-iterations 5
+uv run --project ${CLAUDE_PLUGIN_ROOT} python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py --name story-gen -p reliable-generation --max-iterations 5
 ```
 
 ---

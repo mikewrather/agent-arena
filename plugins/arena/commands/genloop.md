@@ -632,7 +632,7 @@ Primary mode for agent/programmatic callers.
 
    Run arena.py directly via Bash to ensure proper orchestration:
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
+   uv run --project ${CLAUDE_PLUGIN_ROOT} python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
      --config ${CLAUDE_PLUGIN_ROOT}/config/arena.config.json \
      --name <name> \
      -p reliable-generation \
@@ -693,7 +693,7 @@ Interactive setup for users who want to edit files manually.
 Preview constraint routing without executing:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
+uv run --project ${CLAUDE_PLUGIN_ROOT} python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
   --config ${CLAUDE_PLUGIN_ROOT}/config/arena.config.json \
   --name <name> -p reliable-generation --dry-run
 ```
@@ -708,7 +708,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
 
 3. Launch orchestrator:
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
+   uv run --project ${CLAUDE_PLUGIN_ROOT} python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
      --config ${CLAUDE_PLUGIN_ROOT}/config/arena.config.json \
      --name <name> \
      -p reliable-generation

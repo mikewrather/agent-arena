@@ -13,7 +13,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Bash(python3*arena.py*)",
+        "matcher": "Bash(uv run*arena.py*)",
         "hooks": [
           {
             "type": "command",

@@ -9,12 +9,12 @@ Configuration presets that bundle mode, pattern, personas, and settings into reu
 /arena:run "Review auth module" -p security-audit
 
 # Direct invocation (plugin path)
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
+uv run --project ${CLAUDE_PLUGIN_ROOT} python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
   --config ${CLAUDE_PLUGIN_ROOT}/config/arena.config.json \
   --name my-review -p security-audit
 
 # CLI flags override profile settings
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py --name my-review -p code-review --turns 10
+uv run --project ${CLAUDE_PLUGIN_ROOT} python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py --name my-review -p code-review --turns 10
 ```
 
 ---

@@ -85,7 +85,7 @@ The plugin scripts are located at `${CLAUDE_PLUGIN_ROOT}`:
 Run the arena.py script:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
+uv run --project ${CLAUDE_PLUGIN_ROOT} python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
   --config ${CLAUDE_PLUGIN_ROOT}/config/arena.config.json \
   --name <run-name> \
   -p <profile>

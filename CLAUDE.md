@@ -45,7 +45,8 @@ Or invoke programmatically:
 
 ```bash
 # Create a named run (creates template goal.yaml)
-python3 ~/.claude/plugins/marketplaces/agent-arena/plugins/arena/scripts/arena.py \
+uv run --project ~/.claude/plugins/marketplaces/agent-arena/plugins/arena \
+  python3 ~/.claude/plugins/marketplaces/agent-arena/plugins/arena/scripts/arena.py \
   --config ~/.claude/plugins/marketplaces/agent-arena/plugins/arena/config/arena.config.json \
   --name auth-review
 
@@ -53,7 +54,8 @@ python3 ~/.claude/plugins/marketplaces/agent-arena/plugins/arena/scripts/arena.p
 vim .arena/runs/auth-review/goal.yaml
 
 # Run with a profile
-python3 ~/.claude/plugins/marketplaces/agent-arena/plugins/arena/scripts/arena.py \
+uv run --project ~/.claude/plugins/marketplaces/agent-arena/plugins/arena \
+  python3 ~/.claude/plugins/marketplaces/agent-arena/plugins/arena/scripts/arena.py \
   --name auth-review -p security-audit
 
 # Watch progress (another terminal)
@@ -234,7 +236,7 @@ To resume:
 
 ```bash
 # Run tests
-cd arena-plugin && uvx --with pyyaml pytest tests/ -v
+cd arena-plugin && uv run --project plugins/arena pytest tests/ -v
 
 # Validate plugin manifest
 claude plugin validate arena-plugin/plugins/arena

@@ -11,7 +11,7 @@ Coordinate three AI agents (Claude, Codex, Gemini) for collaborative or adversar
 
 ```bash
 # Run with a profile
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
+uv run --project ${CLAUDE_PLUGIN_ROOT} python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
   --config ${CLAUDE_PLUGIN_ROOT}/config/arena.config.json \
   --name my-review -p code-review
 

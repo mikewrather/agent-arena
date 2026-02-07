@@ -1,0 +1,13 @@
+[project]
+name = "arena"
+version = "1.9.0"
+description = "Multi-agent orchestration for Claude Code"
+requires-python = ">=3.10"
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0",
+]

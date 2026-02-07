@@ -56,7 +56,7 @@ Extract from `$ARGUMENTS`:
 Run arena.py directly via Bash (in background):
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
+uv run --project ${CLAUDE_PLUGIN_ROOT} python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py \
   --config ${CLAUDE_PLUGIN_ROOT}/config/arena.config.json \
   --name <run-name> \
   -p <profile> &

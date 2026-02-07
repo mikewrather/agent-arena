@@ -66,7 +66,7 @@ claude plugin install arena@agent-arena --scope user
 - Codex CLI (`codex`)
 - Gemini CLI (`gemini`)
 - Python 3.10+
-- PyYAML (`pip install pyyaml`)
+- [UV](https://docs.astral.sh/uv/) (dependencies installed automatically on first run)
 
 ## Directory Structure
 

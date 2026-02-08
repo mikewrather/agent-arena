@@ -33,9 +33,14 @@ from genflow_config import (
 logger = logging.getLogger("arena")
 
 EXIT_OK = 0
+EXIT_ERROR = 1
 EXIT_HITL = 10
 EXIT_MAX_TURNS = 11
-EXIT_ERROR = 1
+
+# Internal step control flow signals (not process exit codes)
+STEP_CONTINUE = 100   # Proceed to next workflow step
+STEP_LOOP_BACK = -1   # Loop back to earlier step (refine with loop_to)
+STEP_ESCALATE = -2    # Escalate to HITL immediately
 
 
 @dataclasses.dataclass
@@ -365,14 +370,14 @@ async def run_genflow_orchestrator(
             return EXIT_HITL
         elif result == EXIT_ERROR:
             return EXIT_ERROR
-        elif result == -1:
-            # Loop back - continue from updated step index
-            continue
-        else:
-            # Move to next iteration
+        elif result == EXIT_MAX_TURNS:
+            # All steps completed - move to next iteration
             context.iteration += 1
             context.current_step_index = 0
             save_workflow_state(context)
+        else:
+            logger.error(f"Unexpected workflow result: {result}")
+            return EXIT_ERROR
 
     # Max iterations reached
     write_live("")
@@ -415,8 +420,7 @@ async def execute_workflow(context: WorkflowContext) -> int:
         EXIT_OK: Workflow approved
         EXIT_HITL: HITL needed
         EXIT_ERROR: Error occurred
-        EXIT_MAX_TURNS: Continue to next iteration
-        -1: Loop back to earlier step
+        EXIT_MAX_TURNS: All steps completed, continue to next iteration
     """
     workflow = context.genflow_cfg.workflow
 
@@ -435,23 +439,23 @@ async def execute_workflow(context: WorkflowContext) -> int:
             logger.error(f"Unknown step type: {step.step}")
             return EXIT_ERROR
 
-        if result == EXIT_OK:
-            # Step approved - end workflow
+        if result == STEP_CONTINUE:
+            # Proceed to next workflow step
+            context.current_step_index += 1
+            save_workflow_state(context)
+        elif result == STEP_LOOP_BACK:
+            # Loop back to earlier step (set by refine with loop_to)
+            continue
+        elif result == STEP_ESCALATE:
+            # Escalate to HITL immediately
+            return EXIT_HITL
+        elif result == EXIT_OK:
             return EXIT_OK
         elif result == EXIT_HITL:
             return EXIT_HITL
-        elif result == EXIT_ERROR:
+        else:
+            # Any other value (including EXIT_ERROR) is an error
             return EXIT_ERROR
-        elif result == -1:
-            # Loop back to earlier step (set by refine with loop_to)
-            continue
-        elif result == -2:
-            # Escalate - go to HITL immediately
-            return EXIT_HITL
-
-        # Move to next step
-        context.current_step_index += 1
-        save_workflow_state(context)
 
     # All steps completed - continue to next iteration
     return EXIT_MAX_TURNS
@@ -526,7 +530,7 @@ async def execute_generate_step(step: WorkflowStep, context: WorkflowContext) ->
     context.critiques_by_step = {}
     context.unadjudicated_critiques = []
 
-    return 1  # Continue to next step
+    return STEP_CONTINUE
 
 
 async def execute_critique_step(step: WorkflowStep, context: WorkflowContext) -> int:
@@ -563,7 +567,7 @@ async def execute_critique_step(step: WorkflowStep, context: WorkflowContext) ->
     context.critiques_by_step[step_name] = result.filtered_critiques
     context.unadjudicated_critiques.extend(result.filtered_critiques)
 
-    return 1  # Continue to next step
+    return STEP_CONTINUE
 
 
 async def execute_critique_serial(step: WorkflowStep, context: WorkflowContext) -> CritiqueStepResult:
@@ -824,7 +828,7 @@ async def execute_adjudicate_step(step: WorkflowStep, context: WorkflowContext) 
 
     if not critiques:
         write_live("  No critiques to adjudicate - continuing")
-        return 1
+        return STEP_CONTINUE
 
     # Get agent
     agent_name = step.agent or "claude"
@@ -919,7 +923,7 @@ async def execute_adjudicate_step(step: WorkflowStep, context: WorkflowContext) 
         write_agent_result(context.run_dir, "done", EXIT_OK, summary="Artifact approved")
         return EXIT_OK
 
-    return 1  # Continue to next step
+    return STEP_CONTINUE
 
 
 def get_critiques_for_scope(step: WorkflowStep, context: WorkflowContext) -> List[Critique]:
@@ -954,7 +958,7 @@ async def execute_refine_step(step: WorkflowStep, context: WorkflowContext) -> i
 
     if not context.last_adjudication:
         write_live("  No adjudication to refine from - skipping")
-        return 1
+        return STEP_CONTINUE
 
     iter_dir = context.run_dir / "iterations" / str(context.iteration)
     curr_artifact_path = iter_dir / "artifact_refined.md"
@@ -1048,8 +1052,8 @@ async def execute_refine_step(step: WorkflowStep, context: WorkflowContext) -> i
             # Clear critiques for re-evaluation
             context.critiques_by_step = {}
             context.unadjudicated_critiques = []
-            return -1  # Signal loop back
+            return STEP_LOOP_BACK
         else:
             logger.warning(f"loop_to step '{step.loop_to}' not found")
 
-    return 1  # Continue to next step
+    return STEP_CONTINUE

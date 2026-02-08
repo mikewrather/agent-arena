@@ -208,29 +208,43 @@ async def run_genflow_orchestrator(
 
     # Check for HITL resume
     if state.get("awaiting_human"):
-        from hitl import ingest_hitl_answers
-        hitl_answers = ingest_hitl_answers(run_dir)
-        if hitl_answers:
+        if getattr(args, "reset_hitl", False):
+            # Manual override: clear stale HITL state
             state["awaiting_human"] = False
-            append_jsonl_durable(
-                thread_path,
-                {
-                    "id": sha256(f"human:{utc_now_iso()}"),
-                    "ts": utc_now_iso(),
-                    "iteration": state.get("iteration", 1),
-                    "phase": "hitl_response",
-                    "agent": "human",
-                    "role": "user",
-                    "content": str(hitl_answers),
-                },
-            )
             save_json_atomic(state_path, state)
-            write_live("=" * 60)
-            write_live("RESUMING: Human answers received")
-            write_live("=" * 60)
+            write_live("HITL state cleared via --reset-hitl")
+            logger.info("HITL state cleared via --reset-hitl flag")
         else:
-            logger.info(f"Awaiting human answers at {hitl_dir / 'answers.json'}")
-            return EXIT_HITL
+            from hitl import ingest_hitl_answers
+            hitl_answers = ingest_hitl_answers(run_dir)
+            if hitl_answers:
+                state["awaiting_human"] = False
+                append_jsonl_durable(
+                    thread_path,
+                    {
+                        "id": sha256(f"human:{utc_now_iso()}"),
+                        "ts": utc_now_iso(),
+                        "iteration": state.get("iteration", 1),
+                        "phase": "hitl_response",
+                        "agent": "human",
+                        "role": "user",
+                        "content": str(hitl_answers),
+                    },
+                )
+                save_json_atomic(state_path, state)
+                write_live("=" * 60)
+                write_live("RESUMING: Human answers received")
+                write_live("=" * 60)
+            elif not (hitl_dir / "questions.json").exists():
+                # Phantom HITL: awaiting_human is set but questions.json is gone
+                state["awaiting_human"] = False
+                save_json_atomic(state_path, state)
+                write_live("Cleared stale HITL state (no questions.json found)")
+                logger.warning("Cleared phantom HITL state: awaiting_human was true but questions.json missing")
+            else:
+                logger.info(f"Awaiting human answers at {hitl_dir / 'answers.json'}")
+                logger.info(f"See questions at {hitl_dir / 'questions.json'}")
+                return EXIT_HITL
 
     # Load inputs
     from arena import load_goal

@@ -202,6 +202,7 @@ def load_genflow_config(config_path: Path) -> GenflowConfig:
         yaml.YAMLError: If config file has invalid YAML
         ValueError: If config file has invalid structure
     """
+    config_path = Path(config_path) if not isinstance(config_path, Path) else config_path
     if not config_path.exists():
         raise FileNotFoundError(f"Genflow config not found: {config_path}")
 

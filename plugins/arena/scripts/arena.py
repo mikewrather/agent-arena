@@ -1843,9 +1843,13 @@ async def _run_orchestrator_inner(
     hitl_dir = run_dir / "hitl"
     ensure_secure_dir(hitl_dir)
 
+    # Skip HITL check here when genflow config is specified — genflow orchestrator
+    # has its own HITL handling and this check would block reaching it
+    uses_genflow = hasattr(args, 'genflow_config') and args.genflow_config
+
     # Check for HITL resume
     hitl_answers = None
-    if state.get("awaiting_human"):
+    if state.get("awaiting_human") and not uses_genflow:
         if getattr(args, "reset_hitl", False):
             # Manual override: clear stale HITL state
             state["awaiting_human"] = False

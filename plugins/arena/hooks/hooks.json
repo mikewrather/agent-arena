@@ -1,5 +1,5 @@
 {
-  "description": "Arena orchestration hooks for HITL handling and notifications",
+  "description": "Arena orchestration hooks for HITL handling, notifications, and plan review",
   "hooks": {
     "SubagentStop": [
       {
@@ -18,6 +18,15 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/hitl-handler.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/plan-review-guard.sh"
           }
         ]
       }

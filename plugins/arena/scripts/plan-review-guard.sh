@@ -6,11 +6,12 @@
 #
 # Flow:
 #   1. Claude drafts plan, calls ExitPlanMode
-#   2. This hook BLOCKS it (exit 2) with review instructions
-#   3. Claude runs review (Codex+Gemini or arena), iterates on feedback
-#   4. Claude creates marker: touch .claude/.plan-reviewed
-#   5. Claude calls ExitPlanMode again
-#   6. This hook sees marker, cleans it up, allows through (exit 0)
+#   2. This hook reads the plan from stdin JSON (tool_input.plan)
+#   3. This hook BLOCKS it (exit 2) with review instructions + plan content
+#   4. Claude runs review (Codex+Gemini or arena), iterates on feedback
+#   5. Claude creates marker: touch .claude/.plan-reviewed
+#   6. Claude calls ExitPlanMode again
+#   7. This hook sees marker, cleans it up, allows through (exit 0)
 #
 # Config in .claude/arena.local.md frontmatter:
 #   plan-review: true          # enable/disable
@@ -20,6 +21,9 @@ set -euo pipefail
 
 CONFIG=".claude/arena.local.md"
 MARKER=".claude/.plan-reviewed"
+
+# Read stdin (hook JSON payload)
+INPUT=$(cat)
 
 # Quick exit if no config file
 if [[ ! -f "$CONFIG" ]]; then
@@ -40,73 +44,85 @@ if [[ -f "$MARKER" ]]; then
     exit 0
 fi
 
+# Extract plan content from stdin JSON
+PLAN_CONTENT=$(echo "$INPUT" | jq -r '.tool_input.plan // empty' 2>/dev/null)
+if [[ -z "$PLAN_CONTENT" ]]; then
+    PLAN_CONTENT="(Plan content not available in hook input. Read the most recent .md file from .claude/plans/)"
+fi
+
 # Read review type preference
 REVIEW_TYPE=$(echo "$FRONTMATTER" | grep '^plan-review-type:' | sed 's/plan-review-type: *//' | tr -d '[:space:]')
 REVIEW_TYPE=${REVIEW_TYPE:-ask}
 
+# Build the review prompt with embedded plan content
+REVIEW_PROMPT="The plan content is:
+
+<plan>
+${PLAN_CONTENT}
+</plan>"
+
 # Block ExitPlanMode and inject review instructions
 case "$REVIEW_TYPE" in
     quick)
-        cat >&2 << 'REVIEW_PROMPT'
+        cat >&2 << REVIEW_MSG
 === PLAN REVIEW REQUIRED ===
 
 Plan review is enabled for this project (type: quick).
 ExitPlanMode is BLOCKED until the plan is reviewed.
 
+${REVIEW_PROMPT}
+
 Do the following:
 
-1. Read the plan file from .claude/plans/ (find the most recent .md file).
-
-2. Use the Task tool to launch TWO subagents in parallel:
-   - codex-default: "Review this implementation plan critically. Identify issues, risks, gaps, missing edge cases, and suggest specific improvements. Here is the plan: [full plan content]"
+1. Use the Task tool to launch TWO subagents in parallel:
+   - codex-default: "Review this implementation plan critically. Identify issues, risks, gaps, missing edge cases, and suggest specific improvements. Here is the plan: [include the full plan content above]"
    - gemini-default: same prompt.
 
-3. When both complete, synthesize their feedback. If there are actionable issues:
+2. When both complete, synthesize their feedback. If there are actionable issues:
    - Update the plan file to address the feedback
    - Summarize what changed
 
-4. Create the review marker:
+3. Create the review marker:
    touch .claude/.plan-reviewed
 
-5. Call ExitPlanMode again. It will succeed this time.
+4. Call ExitPlanMode again. It will succeed this time.
 
 ===============================
-REVIEW_PROMPT
+REVIEW_MSG
         ;;
 
     multi-expert)
-        cat >&2 << 'REVIEW_PROMPT'
+        cat >&2 << REVIEW_MSG
 === PLAN REVIEW REQUIRED ===
 
 Plan review is enabled for this project (type: multi-expert).
 ExitPlanMode is BLOCKED until the plan is reviewed.
 
+${REVIEW_PROMPT}
+
 Do the following:
 
-1. Read the plan file from .claude/plans/ (find the most recent .md file).
+1. Launch an arena run with the multi-expert profile using the plan content above as the goal.
 
-2. Launch an arena run with the multi-expert profile:
-   - Create a run directory and write the plan as the goal
-   - Execute: uv run --project ${CLAUDE_PLUGIN_ROOT} python3 ${CLAUDE_PLUGIN_ROOT}/scripts/arena.py --config ${CLAUDE_PLUGIN_ROOT}/config/arena.config.json --name plan-review -p multi-expert
-   - Wait for it to complete (monitor .arena/runs/plan-review/agent-result.json)
+2. Wait for completion, read the results, and incorporate actionable feedback into the plan.
 
-3. Read the results and incorporate actionable feedback into the plan.
-
-4. Create the review marker:
+3. Create the review marker:
    touch .claude/.plan-reviewed
 
-5. Call ExitPlanMode again. It will succeed this time.
+4. Call ExitPlanMode again. It will succeed this time.
 
 ===============================
-REVIEW_PROMPT
+REVIEW_MSG
         ;;
 
     ask|*)
-        cat >&2 << 'REVIEW_PROMPT'
+        cat >&2 << REVIEW_MSG
 === PLAN REVIEW REQUIRED ===
 
 Plan review is enabled for this project.
 ExitPlanMode is BLOCKED until the plan is reviewed.
+
+${REVIEW_PROMPT}
 
 First, use AskUserQuestion to ask:
   Question: "How would you like to review this plan?"
@@ -121,23 +137,21 @@ Based on their choice:
 - **Skip**: Create the marker (touch .claude/.plan-reviewed) and call ExitPlanMode again.
 
 - **Quick review**:
-  1. Read the most recent plan file from .claude/plans/.
-  2. Launch TWO Task subagents in parallel:
-     - codex-default: "Review this implementation plan critically. Identify issues, risks, gaps, missing edge cases, and suggest specific improvements. Here is the plan: [full plan content]"
+  1. Launch TWO Task subagents in parallel with the plan content above:
+     - codex-default: "Review this implementation plan critically. Identify issues, risks, gaps, missing edge cases, and suggest specific improvements. Here is the plan: [include the full plan content]"
      - gemini-default: same prompt.
-  3. Synthesize feedback. If actionable, update the plan.
-  4. Create marker: touch .claude/.plan-reviewed
-  5. Call ExitPlanMode again.
+  2. Synthesize feedback. If actionable, update the plan.
+  3. Create marker: touch .claude/.plan-reviewed
+  4. Call ExitPlanMode again.
 
 - **Multi-expert**:
-  1. Read the most recent plan file from .claude/plans/.
-  2. Launch arena run with multi-expert profile.
-  3. Wait for completion, incorporate feedback.
-  4. Create marker: touch .claude/.plan-reviewed
-  5. Call ExitPlanMode again.
+  1. Launch arena run with multi-expert profile using the plan content as the goal.
+  2. Wait for completion, incorporate feedback.
+  3. Create marker: touch .claude/.plan-reviewed
+  4. Call ExitPlanMode again.
 
 ===============================
-REVIEW_PROMPT
+REVIEW_MSG
         ;;
 esac
 
